@@ -6,509 +6,9 @@
 <title>Liflow — 時間と出来事の記録</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Yomogi&family=M+PLUS+Rounded+1c:wght@400;500;700;800&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --pink:#FFC7DE;
-    --pink-deep:#FF7FAF;
-    --pink-dark:#E8558E;
-    --blue:#BFEAF9;
-    --blue-deep:#6FC6E8;
-    --lavender:#E3D6FF;
-    --lavender-deep:#B79CF0;
-    --yellow:#FFF3B0;
-    --yellow-deep:#F2CF4A;
-    --paper:#FFFDF7;
-    --text:#6B4C6E;
-    --text-soft:#9A7B9C;
-    --line:#F0A8C6;
-    --radius:20px;
-  }
-  *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
-  body{
-    font-family:'M PLUS Rounded 1c','Hiragino Maru Gothic ProN',sans-serif;
-    color:var(--text);
-    min-height:100vh;
-    background-color:#FFF6FB;
-    background-image:radial-gradient(circle, #ffffff 2px, transparent 2.4px);
-    background-size:26px 26px;
-    padding:20px 14px 60px;
-  }
-  .washi{
-    position:absolute; top:-10px; left:22px;
-    width:74px; height:26px;
-    background:repeating-linear-gradient(45deg, var(--yellow) 0 6px, #FFFBE0 6px 12px);
-    opacity:.9; transform:rotate(-4deg);
-    border:2px dashed #fff;
-    border-radius:4px;
-    box-shadow:0 2px 3px rgba(0,0,0,.08);
-  }
-  .app{max-width:1180px;margin:0 auto;}
 
-  /* ---------- header ---------- */
-  header.top{
-    display:flex; align-items:center; justify-content:space-between;
-    background:linear-gradient(135deg,var(--pink) 0%, var(--lavender) 100%);
-    border:3px solid #fff;
-    outline:3px dashed var(--pink-dark);
-    outline-offset:-8px;
-    border-radius:26px;
-    padding:16px 22px;
-    margin-bottom:14px;
-    box-shadow:5px 5px 0 var(--pink-dark);
-    position:relative;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  .title-wrap{display:flex; align-items:center; gap:10px;}
-  .charm{font-size:26px; display:inline-block; animation:sway 2.6s ease-in-out infinite; transform-origin:top center;}
-  @keyframes sway{0%,100%{transform:rotate(-8deg);}50%{transform:rotate(8deg);}}
-  h1{font-family:'Yomogi',cursive; font-size:26px; margin:0; color:var(--pink-dark);
-     text-shadow:2px 2px 0 #fff, -1px -1px 0 #fff; letter-spacing:1px;}
-  h1 span{color:var(--blue-deep);}
-  .subtitle{font-size:11px;color:var(--text-soft);margin-top:2px;}
-  .header-actions{display:flex; align-items:center; gap:8px;}
-  .icon-btn{
-    background:#fff; border:3px solid var(--pink-dark); border-radius:50%;
-    width:46px;height:46px; font-size:20px; cursor:pointer;
-    box-shadow:3px 3px 0 var(--pink-dark); transition:transform .12s; flex-shrink:0;
-    display:inline-flex; align-items:center; justify-content:center;
-  }
-  .icon-btn:hover{transform:translateY(-2px) rotate(-6deg);}
-  .icon-btn:active{transform:translateY(1px);box-shadow:1px 1px 0 var(--pink-dark);}
-
-  .user-badge{
-    font-size:11px; background:#fff; border:2px solid var(--pink-dark);
-    padding:4px 10px; border-radius:12px; font-weight:bold; color:var(--pink-dark);
-  }
-
-  /* ---------- nav tabs ---------- */
-  .tabs{display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center;}
-  .tab-btn{
-    font-family:inherit; font-weight:800; font-size:12.5px; padding:9px 16px;
-    border-radius:16px; border:2px solid var(--pink-dark); background:#fff; color:var(--pink-dark);
-    cursor:pointer; box-shadow:2px 2px 0 var(--pink-dark); transition:.12s;
-  }
-  .tab-btn.active{background:var(--pink-deep); color:#fff;}
-  .tab-btn:hover{transform:translateY(-1px);}
-
-  /* ---------- day nav ---------- */
-  .day-nav{display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;}
-  .day-nav .date-label{font-family:'Yomogi',cursive; font-size:18px; color:var(--pink-dark); font-weight:700; white-space:nowrap;}
-  .day-nav input[type=date]{border:2px solid var(--pink); border-radius:10px; padding:7px 10px; font-family:inherit; margin-left:auto; background:#fff;}
-  .nav-arrow{width:40px;height:40px;font-size:15px;}
-
-  /* ---------- layout ---------- */
-  .layout{display:grid; grid-template-columns:1.15fr 1fr; gap:18px; align-items:start;}
-  @media (max-width:880px){.layout{grid-template-columns:1fr;}}
-
-  .card{
-    background:var(--paper); border:3px solid #fff; outline:3px dashed var(--line); outline-offset:-7px;
-    border-radius:var(--radius); box-shadow:5px 5px 0 var(--line); padding:20px 18px 18px; position:relative; margin-bottom:18px;
-  }
-  .card h2{font-family:'Yomogi',cursive; font-size:19px; margin:0 0 12px; color:var(--pink-dark); display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
-
-  /* ---------- timeline card ---------- */
-  .timeline-card{padding-left:34px;}
-  .binder-holes{position:absolute; left:10px; top:20px; bottom:20px; width:14px; display:flex; flex-direction:column; justify-content:space-between;}
-  .binder-holes span{display:block; width:12px; height:12px; border-radius:50%; background:#FFF6FB; border:2px solid var(--pink); box-shadow:inset 0 1px 2px rgba(0,0,0,.15);}
-  .now-badge{font-size:11px; background:var(--yellow); border:2px solid var(--yellow-deep); padding:2px 10px; border-radius:20px; color:#8a6d00; font-weight:700; margin-left:auto;}
-
-  .timeline-scroll{
-    max-height:520px; overflow-y:auto; overflow-x:hidden; border-radius:14px;
-    background:repeating-linear-gradient(#fff 0 1px, #FFFDF9 1px 2px);
-    border:2px dashed var(--line); padding:6px 10px 6px 0; position:relative;
-  }
-  .timeline-inner{position:relative;}
-  .hour-row{border-top:1px dotted #EBC9D8;}
-  .hour-label{position:absolute; left:0; top:-9px; font-size:11px; color:var(--text-soft); background:var(--paper); padding:0 4px; font-weight:700;}
-  .task-block{
-    position:absolute; border-radius:12px; padding:3px 6px; font-size:11.5px; color:#5b3a4e;
-    overflow:hidden; border:2px solid rgba(255,255,255,.8); box-shadow:2px 2px 0 rgba(0,0,0,.08);
-    cursor: grab; user-select: none; z-index:2; transition: left 0.2s, width 0.2s;
-  }
-  .task-block:active{ cursor: grabbing; opacity: 0.8; }
-  .task-block b{display:block;font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .task-block .tb-time{font-size:9.5px;opacity:.85; display:block;}
-  .type-fixed{background:repeating-linear-gradient(135deg, var(--lavender) 0 8px, #F1E7FF 8px 16px); border-color:var(--lavender-deep);}
-  .type-flexible{background:var(--pink); border-color:var(--pink-dark);}
-  .type-tomorrow{background:var(--yellow); border-color:var(--yellow-deep);}
-  .task-block.is-active{outline:3px solid #FF3E82; outline-offset:1px; box-shadow:0 0 0 3px rgba(255,62,130,.25), 2px 2px 0 rgba(0,0,0,.08);}
-  .task-block.is-done{opacity:.65; background:#E2F3E7; border-color:#81C784;}
-  .now-line{position:absolute; left:0; right:0; height:0; border-top:2px solid #FF3E82; pointer-events:none; z-index:3;}
-  .now-line::before{content:'いま♡'; position:absolute; left:-2px; top:-10px; background:#FF3E82; color:#fff; font-size:9px; font-weight:700; padding:1px 6px; border-radius:8px;}
-
-  /* ---------- form fields ---------- */
-  .field{margin-bottom:12px;}
-  .field label{font-size:12px; font-weight:700; color:var(--pink-dark); display:block; margin-bottom:4px;}
-  .field input[type=text], .field input[type=number], .field input[type=time], .field input[type=date], .field input[type=email], .field input[type=password], .field select, .field input[type=url]{
-    width:100%; border:2px solid var(--pink); background:#fff; border-radius:12px; padding:9px 12px;
-    font-family:inherit; font-size:14px; color:var(--text); outline:none;
-  }
-  .field input:focus, .field select:focus, .field textarea:focus{border-color:var(--pink-dark);}
-  .field textarea{width:100%;border:2px solid var(--pink);background:#fff;border-radius:12px;padding:9px 12px;font-family:inherit;font-size:13px;color:var(--text);outline:none;resize:vertical;}
-  .memo-line{font-size:11px;color:var(--text-soft);margin-top:5px;padding:5px 8px;background:#FFF7FB;border-radius:8px;}
-  .money-line{font-size:11px;font-weight:800;margin-top:5px;color:#6B8E5A;}
-  .money-line.expense{color:#C86A6A;}
-  .money-mini-btn{font:inherit;font-size:10px;line-height:1;background:#fff;border:1px solid var(--pink);color:var(--pink-dark);border-radius:7px;padding:2px 4px;cursor:pointer;}
-  .money-mini-btn:hover{background:var(--pink);color:#fff;}
-  .finance-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-  @media(max-width:760px){.finance-grid{grid-template-columns:1fr;}}
-  .finance-period{background:#fff;border:2px solid var(--pink);border-radius:16px;padding:12px;margin-bottom:14px;display:flex;flex-direction:column;gap:10px}.finance-period-buttons{display:flex;gap:6px;flex-wrap:wrap}.finance-period-buttons .btn.active{background:var(--pink-dark);color:#fff}.finance-period-nav{display:flex;align-items:center;justify-content:center;gap:16px;font-size:15px}.finance-custom{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;font-size:12px}.finance-custom input{border:2px solid var(--pink);border-radius:9px;padding:6px}.money-category-row{width:100%;border:0;border-bottom:1px dashed var(--pink);background:transparent;padding:9px 2px;display:grid;grid-template-columns:minmax(0,1fr) 1fr;gap:10px;text-align:left;cursor:pointer;font:inherit}.money-category-row>span:first-child{display:flex;justify-content:space-between;gap:8px}.money-category-row small{color:var(--text-soft)}.money-category-row>span:last-child{display:flex;align-items:center;gap:7px;justify-content:flex-end}.category-bar{width:70px;height:7px;background:#f1e9ee;border-radius:8px;overflow:hidden;display:inline-block}.category-bar i{display:block;height:100%;background:var(--blue-deep);border-radius:8px}.money-category-row:last-child{border-bottom:0}.money-category-row:hover{background:#fff7fb;border-radius:8px}
-  .money-summary{background:#fff;border:2px solid var(--pink);border-radius:16px;padding:14px;}
-  .money-big{font-size:24px;font-weight:800;color:var(--pink-dark);}
-  .money-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--pink);font-size:12px;}
-  .money-row:last-child{border-bottom:none;}
-  .budget-bar{height:10px;background:#f4edf1;border-radius:10px;overflow:hidden;margin:7px 0;}
-  .budget-fill{height:100%;background:var(--blue-deep);border-radius:10px;}
-  .budget-fill.over{background:#D66;}
-  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
-  .type-choice{display:flex; gap:6px; flex-wrap:wrap;}
-  .type-choice label{
-    flex:1; min-width:96px; text-align:center; font-size:11.5px; font-weight:700;
-    border:2px solid var(--pink); border-radius:12px; padding:8px 4px; cursor:pointer;
-    background:#fff; color:var(--text-soft); transition:.15s;
-  }
-  .type-choice input{display:none;}
-  .type-choice label:has(input:checked){background:var(--pink); border-color:var(--pink-dark); color:var(--pink-dark); box-shadow:2px 2px 0 var(--pink-dark);}
-
-  .btn{font-family:inherit; font-weight:800; font-size:14px; border-radius:16px; border:2px solid var(--pink-dark);
-       padding:10px 16px; cursor:pointer; background:var(--pink-deep); color:#fff; box-shadow:3px 3px 0 var(--pink-dark); transition:transform .1s;}
-  .btn:hover{transform:translateY(-1px);}
-  .btn:active{transform:translateY(1px); box-shadow:1px 1px 0 var(--pink-dark);}
-  .btn.full{width:100%;}
-  .btn.blue{background:var(--blue-deep); border-color:#3AA6CC; box-shadow:3px 3px 0 #3AA6CC;}
-  .btn.small{font-size:11px; padding:6px 10px; border-radius:12px; box-shadow:2px 2px 0 var(--pink-dark);}
-  .btn.ghost{background:#fff; color:var(--pink-dark);}
-  .btn.gray{background:#eee; color:#888; border-color:#ccc; box-shadow:2px 2px 0 #ccc;}
-  .btn:disabled{opacity:.4; cursor:not-allowed;}
-
-  /* ---------- task table / cards ---------- */
-  .task-table{
-    width: 100%;
-    border-collapse: collapse;
-    background: #fff;
-    border-radius: 14px;
-    overflow: hidden;
-    border: 2px solid var(--pink);
-    margin-bottom: 12px;
-  }
-  .task-table th, .task-table td{
-    padding: 8px 10px;
-    border-bottom: 1px dashed var(--pink);
-    font-size: 12px;
-    text-align: left;
-  }
-  .task-table th{ background: #FFF0F5; color: var(--pink-dark); font-weight:800; }
-  .task-table tr:last-child td{ border-bottom: none; }
-  .task-table .status-col{ text-align: center; width: 32px; font-size: 16px; }
-
-  .task-card{background:#fff; border:2px solid var(--pink); border-radius:16px; padding:10px 12px; margin-bottom:10px; position:relative;}
-  .task-card.active-card{border-color:#FF3E82; box-shadow:0 0 0 3px rgba(255,62,130,.18);}
-  .task-top{display:flex; justify-content:space-between; align-items:flex-start; gap:6px;}
-  .task-name{font-weight:800; font-size:14.5px;}
-  .badge{font-size:10px; font-weight:700; border-radius:10px; padding:2px 8px; white-space:nowrap;}
-  .badge.fixed{background:var(--lavender); color:#6B4CA8;}
-  .badge.flexible{background:var(--pink); color:var(--pink-dark);}
-  .badge.tomorrow{background:var(--yellow); color:#8a6d00;}
-  .task-meta{font-size:11.5px; color:var(--text-soft); margin-top:4px; line-height:1.6;}
-  .task-actions{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; align-items:center;}
-  .timer{font-family:'M PLUS Rounded 1c'; font-weight:800; font-size:14px; background:#FFE8F1; color:#FF3E82; border-radius:10px; padding:3px 10px; border:2px solid #FF3E82;}
-  .timer.over{background:#FFD3D3; color:#D6002B; border-color:#D6002B;}
-  .empty{font-size:12.5px; color:var(--text-soft); text-align:center; padding:14px 4px;}
-  .tomorrow-card .task-name::before{content:'🌙 ';}
-
-  /* ---------- todo columns ---------- */
-  .todo-cols{display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;}
-  @media (max-width:880px){.todo-cols{grid-template-columns:1fr;}}
-  .todo-col h3{font-family:'Yomogi',cursive; font-size:15px; color:var(--pink-dark); margin:0 0 10px;}
-
-  .calendar-filter-wrap{display:flex;align-items:center;justify-content:flex-end;gap:7px;margin:0 0 10px;flex-wrap:wrap;}
-  .calendar-filter-label{font-size:11px;font-weight:800;color:var(--text-soft);}
-  .calendar-filter{border:2px solid var(--pink);background:#fff;border-radius:12px;padding:6px 10px;font-family:inherit;font-size:11px;font-weight:700;color:var(--text);outline:none;cursor:pointer;box-shadow:2px 2px 0 rgba(232,85,142,.18);}
-  .calendar-filter:focus{border-color:var(--pink-dark);}
-
-  /* ---------- week view ---------- */
-  .week-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:8px;}
-  @media (max-width:820px){.week-grid{grid-template-columns:1fr 1fr; }}
-  .week-col{background:#fff; border:2px solid var(--pink); border-radius:14px; padding:8px; min-height:150px;}
-  .week-col.today{border-color:#FF3E82; box-shadow:0 0 0 3px rgba(255,62,130,.15);}
-  .week-col-head{font-weight:800; font-size:12px; text-align:center; padding-bottom:6px; border-bottom:2px dashed var(--pink); margin-bottom:6px; cursor:pointer;}
-  .week-col-head.sun{color:#FF6F91;}
-  .week-col-head.sat{color:#4FA8D8;}
-  .wk-chip{font-size:10.5px; border-radius:8px; padding:3px 6px; margin-bottom:4px; border:1px solid rgba(0,0,0,.06); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .wk-stats{ font-size: 11px; text-align: center; color: var(--pink-dark); font-weight: bold; margin-bottom: 4px; }
-
-  /* ---------- month view ---------- */
-  .month-weekday-row{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; font-size:11px; font-weight:800; text-align:center; color:var(--text-soft);}
-  .month-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px;}
-  .month-cell{background:#fff; border:2px solid var(--pink); border-radius:12px; min-height:66px; padding:5px; cursor:pointer; transition:.1s;}
-  .month-cell:hover{transform:translateY(-1px);}
-  .month-cell.other-month{opacity:.35;}
-  .month-cell.today{border-color:#FF3E82; box-shadow:0 0 0 2px rgba(255,62,130,.15);}
-  .month-date{font-size:11px; font-weight:800; display:flex; justify-content:space-between; align-items:center;}
-  .month-items{display:flex; flex-direction:column; gap:2px; margin-top:4px;}
-  .month-item{font-size:9.5px; line-height:1.25; border-radius:5px; padding:2px 4px; border:1px solid rgba(0,0,0,.07); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .month-item.event{background:#EEF8F0; border-color:#B8DDBD;}
-  .month-item.task{background:#FFF5BA; border-color:#E9C94A;}
-  .month-item.record{background:#F3ECFF; border-color:#D2B9F2;}
-  .month-item.done{opacity:.62; text-decoration:line-through;}
-  .wk-chip.routine-summary, .month-item.routine-summary{background:#F3ECFF; border-color:#D2B9F2; font-weight:800;}
-  .wk-chip.money-summary-chip, .month-item.money-summary-chip{background:#FFF6E5; border-color:#F2CF4A; font-weight:800;}
-  .scope-banner{display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:#F3ECFF; border:2px dashed var(--lavender-deep); border-radius:14px; padding:8px 14px; margin-bottom:12px; font-size:12.5px; font-weight:700; color:#6B4CA8;}
-  .project-card{background:#fff; border:2px solid var(--pink); border-radius:16px; padding:10px 12px; margin-bottom:12px;}
-  .project-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
-  .project-name{font-weight:800; font-size:14.5px;}
-  .project-body{margin-top:8px; padding-top:8px; border-top:1px dashed var(--pink);}
-  .tree-node{margin-bottom:4px;}
-  .tree-row{display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:4px 0;}
-  .tree-toggle{background:#fff; border:1px solid var(--pink); border-radius:6px; width:20px; height:20px; font-size:10px; cursor:pointer; flex-shrink:0; padding:0;}
-  .tree-toggle-spacer{display:inline-block; width:20px; flex-shrink:0;}
-  .tree-name{font-size:13px; font-weight:700;}
-  .tree-name.done{opacity:.55; text-decoration:line-through;}
-  .tree-progress{font-size:11px; color:var(--pink-dark); font-weight:800; background:#FFE8F1; border-radius:10px; padding:1px 8px;}
-  .tree-actions{display:flex; gap:4px; flex-wrap:wrap; margin-left:auto;}
-  .month-more{font-size:9px; color:var(--text-soft); text-align:center; padding-top:1px;}
-  .month-cell{min-height:118px;}
-  .achievement-summary{font-size:12px;font-weight:800;color:var(--pink-dark);margin:4px 0 8px;}
-  .day-memo-card{margin-top:14px;padding:10px 0 2px;border-top:1px dashed #E9C8D7;}
-  .day-memo-title{font-size:13px;font-weight:800;color:var(--pink-dark);margin-bottom:6px;}
-  .day-memo-card textarea{min-height:66px;box-sizing:border-box;font-size:12px;padding:8px 10px;border-width:1px;border-radius:10px;background:#FFFDFE;}
-  .day-memo-hint{font-size:10px;color:var(--text-soft);margin-top:4px;}
-
-
-  /* ---------- modal ---------- */
-  .modal-bg{position:fixed; inset:0; background:rgba(107,76,110,.45); display:none; align-items:center; justify-content:center; z-index:50; padding:16px; overflow-y:auto;}
-  .modal-bg.show{display:flex;}
-  .modal{background:var(--paper); border-radius:22px; border:3px solid #fff; outline:3px dashed var(--pink-dark); outline-offset:-7px;
-         box-shadow:6px 6px 0 var(--pink-dark); max-width:420px; width:100%; padding:22px; margin:auto;}
-  .modal h2{margin-top:0; font-family:'Yomogi',cursive; color:var(--pink-dark);}
-  .modal-actions{display:flex; gap:8px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap;}
-  .hint{font-size:11px; color:var(--text-soft); margin-top:4px; line-height:1.5;}
-
-  #toast{
-    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
-    background:#FF7FAF; color:#fff; font-weight:800; font-size:13px; padding:10px 20px; border-radius:20px; border:2px solid #fff;
-    box-shadow:3px 3px 0 var(--pink-dark); opacity:0; pointer-events:none; transition:.25s; z-index:80; white-space:nowrap; max-width:90vw; text-overflow:ellipsis; overflow:hidden;
-  }
-  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
-
-  ::-webkit-scrollbar{width:10px;}
-  ::-webkit-scrollbar-thumb{background:var(--pink); border-radius:10px;}
-  ::-webkit-scrollbar-track{background:#fff6fb;}
-
-/* Routine achievement panel */
-.routine-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:12px;max-height:420px;overflow:auto;padding-right:4px}
-.routine-stat-card{background:rgba(255,255,255,.72);border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:14px}
-.routine-stat-head{display:flex;justify-content:space-between;gap:8px;align-items:center;font-weight:700}
-.routine-stat-sub{font-size:12px;color:#777;margin-top:5px}
-.routine-bar{height:8px;background:#eee;border-radius:99px;overflow:hidden;margin-top:9px}
-.routine-bar>span{display:block;height:100%;background:currentColor;border-radius:99px}
-
-
-
-  .routine-achievement-card{margin-top:18px;}
-  .routine-achievement-card h2{margin-bottom:6px;}
-  .routine-achievement-card .routine-stats-grid{max-height:none;overflow:visible;}
-  .routine-today-panel{margin:12px 0;padding:14px;border:2px dashed var(--pink);border-radius:18px;background:rgba(255,248,252,.82)}
-  .routine-today-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-  .routine-today-title{font-weight:900;color:var(--pink-dark);font-size:16px}
-  .routine-today-sub{font-size:12px;color:var(--text-soft);margin-top:3px}
-  .routine-today-rate{font-size:19px;font-weight:900;color:var(--purple);white-space:nowrap}
-  .routine-today-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-top:10px}
-  .routine-today-item{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--line);border-radius:14px;background:#fff}
-  .routine-today-item.done .routine-today-name{text-decoration:line-through;opacity:.55}
-  .routine-done-btn{width:30px;height:30px;border-radius:50%;border:2px solid var(--pink);background:#fff;cursor:pointer;font-weight:900;flex:none}
-  .routine-done-btn.done{background:var(--pink);color:#fff}
-  .routine-today-name{font-weight:800;word-break:break-word}
-  .routine-today-time{font-size:11px;color:var(--text-soft);white-space:nowrap}.routine-exclude-btn{margin-left:auto;white-space:nowrap;flex:none}
-
-
-  .origin-choice{display:flex;gap:8px;flex-wrap:wrap}.origin-choice label{flex:1;min-width:220px}.origin-choice input{display:none}.origin-choice span{display:block;padding:9px 10px;border:2px solid var(--line);border-radius:12px;background:#fff;cursor:pointer;text-align:center}.origin-choice input:checked+span{background:var(--pink);border-color:var(--pink-deep);font-weight:800}.event-plan-actual{font-size:12px;line-height:1.55;color:var(--text-soft)}
-  .plan-actual-card{margin-top:12px}
-  .plan-actual-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-  .plan-actual-row{display:grid;grid-template-columns:minmax(150px,1.4fr) minmax(105px,.8fr) minmax(105px,.8fr) minmax(170px,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:#fff}
-  .plan-actual-row small{color:var(--text-soft);font-weight:700}.pa-name{min-width:0}.pa-name span{display:block;font-size:11px;color:var(--text-soft);margin-top:3px;word-break:break-word}.pa-diff{font-size:12px;color:var(--purple);font-weight:800}
-  @media(max-width:800px){.plan-actual-row{grid-template-columns:1fr 1fr}.plan-actual-row .pa-name{grid-column:1/-1}.plan-actual-row .btn{grid-column:1/-1;width:100%}}
-
-/* ===== planned / actual visual comparison ===== */
-.plan-actual-visual{margin-top:10px}
-.pa-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text-soft);margin:8px 0 12px}
-.pa-vrow{border-top:1px solid var(--line);padding:12px 0}
-.pa-vrow:first-child{border-top:0}
-.pa-vhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
-.pa-vname{font-weight:800;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pa-vbadge{font-size:10px;padding:3px 7px;border-radius:999px;background:var(--pink-soft);color:var(--pink-deep);font-weight:800;white-space:nowrap}
-.pa-vtrack{position:relative;height:48px;margin-left:38px;border-radius:8px;background:repeating-linear-gradient(to right,transparent 0,transparent calc(12.5% - 1px),var(--line) calc(12.5% - 1px),var(--line) 12.5%)}
-.pa-vbar{position:absolute;height:13px;border-radius:7px;min-width:3px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
-.pa-vbar.plan{top:4px;background:var(--blue);opacity:.65}
-.pa-vbar.actual{top:28px;background:var(--pink)}
-.pa-vlabel{position:absolute;left:-38px;width:34px;text-align:right;font-size:9px;color:var(--text-soft)}
-.pa-vticks{display:flex;justify-content:space-between;margin:3px 0 0 38px;font-size:9px;color:var(--text-soft)}
-.pa-vdiff{display:flex;flex-wrap:wrap;gap:5px;margin:7px 0 0 38px}
-.pa-vdiff span{font-size:10px;padding:3px 7px;border:1px solid var(--line);border-radius:999px;background:var(--bg-soft)}
-.pa-vdiff .bad{font-weight:800;color:var(--pink-deep)}
-.pa-vdiff .good{font-weight:800;color:var(--blue-deep)}
-.pa-vnoactual{font-size:10px;color:var(--text-soft);margin:7px 0 0 38px}
-
-
-  /* ---------- theme system ---------- */
-  /* Theme is deliberately more than a palette: background, density, borders, shadows and typography all change. */
-  body[data-theme="heisei"]{
-    --pink:#F7A8C4;--pink-deep:#E66D9C;--pink-dark:#C84D7D;--blue:#A9DDF2;--blue-deep:#5CA8CE;
-    --lavender:#DCC9F5;--lavender-deep:#9B7CC7;--yellow:#FFE7A8;--yellow-deep:#D2A23D;
-    --paper:#FFFDFB;--text:#4A3A43;--text-soft:#9A7E8B;--line:#E8C8D5;--bg-soft:#FFF4F8;--radius:18px;
-    background-color:#FFF4F8;
-    background-image:radial-gradient(circle at 14px 14px,rgba(255,255,255,.95) 0 2px,transparent 2.5px),radial-gradient(circle at 67px 49px,rgba(247,168,196,.16) 0 3px,transparent 3.5px);
-    background-size:83px 77px,127px 111px;
-  }
-  body[data-theme="heisei"] .card{position:relative;box-shadow:6px 6px 0 rgba(230,109,156,.17);}
-  body[data-theme="heisei"] .card:nth-child(3n){transform:rotate(.15deg)}
-  body[data-theme="heisei"] .card:nth-child(3n+1){transform:rotate(-.12deg)}
-  body[data-theme="heisei"] header.top{background:linear-gradient(135deg,#fffafd,#ffeaf3);box-shadow:7px 7px 0 rgba(230,109,156,.2);}
-  body[data-theme="heisei"] .tab-btn{box-shadow:3px 3px 0 rgba(230,109,156,.16);}
-
-  body[data-theme="night"]{
-    --pink:#B6B9FF;--pink-deep:#9297FF;--pink-dark:#7379D9;--blue:#8FD7FF;--blue-deep:#64B4E2;
-    --lavender:#B9A7F5;--lavender-deep:#8D78C9;--yellow:#FFE69A;--yellow-deep:#D5B85E;
-    --paper:#151A33;--text:#EEF1FF;--text-soft:#A9B0D3;--line:#394269;--bg-soft:#1D2444;--radius:16px;
-    background:#070A18;
-    /* intentionally irregular, non-repeating star field */
-    background-image:
-      radial-gradient(circle at 4% 17%,rgba(255,255,255,.95) 0 1px,transparent 1.8px),
-      radial-gradient(circle at 11% 74%,rgba(173,222,255,.78) 0 1.3px,transparent 2px),
-      radial-gradient(circle at 19% 39%,rgba(255,255,255,.72) 0 1px,transparent 1.7px),
-      radial-gradient(circle at 27% 91%,rgba(205,194,255,.82) 0 1.2px,transparent 2px),
-      radial-gradient(circle at 34% 11%,rgba(255,255,255,.88) 0 1px,transparent 1.8px),
-      radial-gradient(circle at 43% 63%,rgba(139,214,255,.76) 0 1.1px,transparent 1.9px),
-      radial-gradient(circle at 51% 28%,rgba(255,255,255,.92) 0 1px,transparent 1.8px),
-      radial-gradient(circle at 58% 84%,rgba(191,184,255,.76) 0 1.25px,transparent 2px),
-      radial-gradient(circle at 66% 49%,rgba(255,255,255,.7) 0 1px,transparent 1.8px),
-      radial-gradient(circle at 73% 7%,rgba(158,220,255,.82) 0 1.1px,transparent 1.9px),
-      radial-gradient(circle at 81% 68%,rgba(255,255,255,.9) 0 1px,transparent 1.8px),
-      radial-gradient(circle at 88% 26%,rgba(202,191,255,.8) 0 1.25px,transparent 2px),
-      radial-gradient(circle at 96% 87%,rgba(255,255,255,.72) 0 1px,transparent 1.7px);
-    background-repeat:no-repeat;
-  }
-  body[data-theme="night"] header.top{background:linear-gradient(135deg,rgba(22,29,61,.96),rgba(47,43,85,.96));border-color:#4E5A91;box-shadow:0 12px 28px rgba(0,0,0,.28);}
-  body[data-theme="night"] .card{background:rgba(18,23,48,.93);border-color:#414D78;box-shadow:0 12px 26px rgba(0,0,0,.24);backdrop-filter:blur(3px);}
-  body[data-theme="night"] .tab-btn,body[data-theme="night"] .icon-btn,body[data-theme="night"] .field input,body[data-theme="night"] .field select,body[data-theme="night"] .field textarea{background:#171D39;color:var(--text);border-color:#46527D;}
-  body[data-theme="night"] .tab-btn.active{background:#6D73D7;color:white;}
-  body[data-theme="night"] .washi{background:linear-gradient(135deg,#6257A4,#343B77);border-color:#818BE0;}
-  body[data-theme="night"] .task-block{color:#151A31;}
-  body[data-theme="night"] .btn{box-shadow:0 4px 12px rgba(70,82,160,.35);}
-
-  body[data-theme="minimal"]{
-    --pink:#D6DADF;--pink-deep:#59636F;--pink-dark:#3E4852;--blue:#DCE6ED;--blue-deep:#738897;
-    --lavender:#E7E9EC;--lavender-deep:#9BA2AA;--yellow:#F0E9D1;--yellow-deep:#B6A36B;
-    --paper:#FFFFFF;--text:#30363B;--text-soft:#707980;--line:#D2D7DB;--bg-soft:#F5F6F7;--radius:10px;
-    background:#F4F5F6;background-image:none;padding-top:14px;
-  }
-  body[data-theme="minimal"] header.top{background:#fff;border:1px solid #D6DADF;outline:none;box-shadow:0 2px 8px rgba(0,0,0,.06);border-radius:12px;padding:13px 18px;}
-  body[data-theme="minimal"] h1{font-family:inherit;color:#30363B;text-shadow:none;font-size:23px;}
-  body[data-theme="minimal"] h1 span{color:#59636F;}
-  body[data-theme="minimal"] .charm,body[data-theme="minimal"] .washi{display:none;}
-  body[data-theme="minimal"] .tabs{gap:4px;}
-  body[data-theme="minimal"] .tab-btn{border:1px solid #D2D7DB;box-shadow:none;border-radius:8px;background:#fff;color:#59636F;}
-  body[data-theme="minimal"] .tab-btn.active{background:#59636F;color:#fff;}
-  body[data-theme="minimal"] .card{border:1px solid #D6DADF;outline:none;box-shadow:0 2px 8px rgba(0,0,0,.05);border-radius:12px;}
-  body[data-theme="minimal"] .btn{border:1px solid #59636F;box-shadow:none;border-radius:8px;background:#59636F;}
-  body[data-theme="minimal"] .icon-btn{border:1px solid #D2D7DB;box-shadow:none;border-radius:9px;background:#fff;}
-  body[data-theme="minimal"] .layout{gap:12px;}
-
-  body[data-theme="retro"]{
-    --pink:#F3B35B;--pink-deep:#D88932;--pink-dark:#8A4F20;--blue:#A8D5BA;--blue-deep:#5D9A72;
-    --lavender:#D7C4A8;--lavender-deep:#9A7A52;--yellow:#FFE39A;--yellow-deep:#C59A38;
-    --paper:#FFF7E8;--text:#4C3B2D;--text-soft:#8A7562;--line:#CDA77C;--bg-soft:#FFF0D3;--radius:4px;
-    background:#E8D9BC;background-image:repeating-linear-gradient(0deg,rgba(120,80,40,.05) 0 1px,transparent 1px 4px),repeating-linear-gradient(90deg,rgba(120,80,40,.025) 0 1px,transparent 1px 5px);
-  }
-  body[data-theme="retro"] header.top{background:#F4C879;border:4px double #8A4F20;outline:none;border-radius:4px;box-shadow:5px 5px 0 #8A4F20;}
-  body[data-theme="retro"] h1{font-family:monospace;color:#8A4F20;text-shadow:2px 2px 0 #FFE8B0;}
-  body[data-theme="retro"] .charm{animation:none;filter:sepia(1);} body[data-theme="retro"] .washi{display:none;}
-  body[data-theme="retro"] .tab-btn{border-radius:3px;border:2px solid #8A4F20;box-shadow:2px 2px 0 #8A4F20;background:#FFF1D3;color:#8A4F20;}
-  body[data-theme="retro"] .card{border:2px solid #8A4F20;outline:none;box-shadow:5px 5px 0 #8A4F20;border-radius:4px;}
-  body[data-theme="retro"] .btn{border-radius:3px;border:2px solid #8A4F20;box-shadow:3px 3px 0 #8A4F20;background:#D88932;}
-
-  body[data-theme="nature"]{
-    --pink:#B8D8C0;--pink-deep:#6F9F7D;--pink-dark:#416A4D;--blue:#B9D9E8;--blue-deep:#6699AD;
-    --lavender:#D5CBE6;--lavender-deep:#927CB1;--yellow:#F2E4A7;--yellow-deep:#B49A43;
-    --paper:#FCFAF2;--text:#385044;--text-soft:#71877B;--line:#A9C5B0;--bg-soft:#F2F7EE;--radius:18px;
-    background:#EAF1E8;background-image:radial-gradient(ellipse at 17% 20%,rgba(255,255,255,.8) 0 18px,transparent 19px),radial-gradient(ellipse at 77% 73%,rgba(255,255,255,.55) 0 13px,transparent 14px),radial-gradient(ellipse at 46% 91%,rgba(184,216,192,.25) 0 10px,transparent 11px);background-size:180px 160px,230px 190px,150px 130px;
-  }
-  body[data-theme="nature"] header.top{background:linear-gradient(135deg,#DCEBDE,#D8E6EF);outline:none;box-shadow:6px 6px 0 rgba(65,106,77,.22);}
-  body[data-theme="nature"] .card{outline:none;box-shadow:4px 5px 0 rgba(111,159,125,.2);border-color:#B4CFB8;}
-  body[data-theme="nature"] .washi{background:linear-gradient(135deg,#D5E5D4,#F2F7EA);}
-  body[data-theme="nature"] .tab-btn{box-shadow:2px 3px 0 rgba(65,106,77,.13);}
-
-  .theme-modal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
-  .theme-choice{border:2px solid var(--line);background:var(--paper);border-radius:14px;padding:10px;cursor:pointer;text-align:left;font-family:inherit;color:var(--text);transition:.15s;}
-  .theme-choice:hover{transform:translateY(-2px);box-shadow:3px 3px 0 var(--line);}
-  .theme-choice.selected{border-color:var(--pink-dark);box-shadow:3px 3px 0 var(--pink-dark);}
-  .theme-swatch{height:42px;border-radius:10px;margin-bottom:7px;border:1px solid rgba(0,0,0,.08);}
-  .theme-name{font-weight:800;font-size:13px;}.theme-desc{font-size:10px;color:var(--text-soft);margin-top:2px;}
-  .theme-help{font-size:10px;color:var(--text-soft);line-height:1.6;margin-top:10px;}
-
-
-/* ---------- v4 theme variations: layout, density and component shape ---------- */
-body[data-theme="terminal"]{--bg:#101310;--bg-soft:#151A15;--card:#121712;--text:#D7E8D5;--text-soft:#8FA58D;--line:#304030;--pink:#8FE388;--pink-soft:#1B2A1A;--pink-deep:#A9F3A1;--blue:#75B8FF;--blue-soft:#172333;--blue-deep:#A7D4FF;--shadow:0 0 0 rgba(0,0,0,0);font-family:"Courier New",monospace;letter-spacing:.01em;background:#101310;background-image:linear-gradient(rgba(120,180,120,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(120,180,120,.025) 1px,transparent 1px);background-size:24px 24px}
-body[data-theme="terminal"] .app{max-width:1180px}
-body[data-theme="terminal"] header.top{background:#111711;border:1px solid #395039;outline:none;border-radius:2px;box-shadow:0 0 0 1px #182118,0 8px 24px rgba(0,0,0,.25)}
-body[data-theme="terminal"] h1,body[data-theme="terminal"] h1 span{color:#A9F3A1;text-shadow:0 0 8px rgba(143,227,136,.2)}
-body[data-theme="terminal"] .subtitle{color:#7E9B7C}
-body[data-theme="terminal"] .card{border:1px solid #304030;outline:none;border-radius:2px;box-shadow:none;background:#121712}
-body[data-theme="terminal"] .tabs{gap:2px;border-bottom:1px solid #304030;padding-bottom:6px}
-body[data-theme="terminal"] .tab-btn{border:1px solid #304030;border-radius:2px;background:#121712;box-shadow:none;color:#9CB79A}
-body[data-theme="terminal"] .tab-btn.active{background:#8FE388;color:#101310;border-color:#8FE388}
-body[data-theme="terminal"] .btn{border-radius:2px;box-shadow:none;background:#1B2A1A;border-color:#426040;color:#B9F5B2}
-body[data-theme="terminal"] .icon-btn{border-radius:2px;box-shadow:none;background:#121712;border-color:#304030}
-body[data-theme="terminal"] .washi{display:none}
-body[data-theme="terminal"] .layout{gap:8px}
-body[data-theme="terminal"] .section-title{letter-spacing:.04em}
-
-body[data-theme="paper"]{--bg:#F3EBDD;--bg-soft:#EEE3D1;--card:#FFFDF7;--text:#3E352B;--text-soft:#817466;--line:#CDBDA8;--pink:#B76E4A;--pink-soft:#F2DDD0;--pink-deep:#8D4E34;--blue:#66839A;--blue-soft:#DCE5EA;--blue-deep:#456476;--shadow:0 3px 0 rgba(90,67,45,.12);font-family:Georgia,"Times New Roman",serif;background-image:radial-gradient(rgba(80,55,30,.06) .7px,transparent .7px);background-size:9px 9px}
-body[data-theme="paper"] .app{max-width:1020px}
-body[data-theme="paper"] header.top{background:rgba(255,253,247,.9);border:1px solid #CDBDA8;outline:5px solid rgba(255,253,247,.45);border-radius:0;box-shadow:0 5px 16px rgba(90,67,45,.12)}
-body[data-theme="paper"] h1{font-family:Georgia,serif;color:#7B4934;text-shadow:none;font-size:25px}
-body[data-theme="paper"] h1 span{color:#66839A}
-body[data-theme="paper"] .charm{filter:sepia(.35)}
-body[data-theme="paper"] .tabs{justify-content:center;gap:8px}
-body[data-theme="paper"] .tab-btn{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;box-shadow:none;color:#66594D;padding:7px 11px}
-body[data-theme="paper"] .tab-btn.active{background:transparent;color:#7B4934;border-bottom-color:#B76E4A}
-body[data-theme="paper"] .card{border:1px solid #CDBDA8;outline:0;border-radius:0;box-shadow:3px 3px 0 rgba(90,67,45,.08);background:#FFFDF7}
-body[data-theme="paper"] .btn{border-radius:0;box-shadow:2px 2px 0 rgba(90,67,45,.14);background:#F2DDD0;border-color:#B76E4A;color:#7B4934}
-body[data-theme="paper"] .icon-btn{border-radius:0;box-shadow:none;background:#FFFDF7;border-color:#CDBDA8}
-body[data-theme="paper"] .washi{opacity:.45}
-
-body[data-theme="compact"]{--bg:#F6F7F9;--bg-soft:#EEF1F4;--card:#FFFFFF;--text:#20252B;--text-soft:#69737E;--line:#D7DDE3;--pink:#52677A;--pink-soft:#E8EDF1;--pink-deep:#344B5E;--blue:#557A9B;--blue-soft:#E7EEF5;--blue-deep:#3E607D;--shadow:0 1px 4px rgba(20,30,40,.07);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
-body[data-theme="compact"] .app{max-width:1280px}
-body[data-theme="compact"] header.top{padding:9px 14px;border:1px solid #D7DDE3;outline:none;border-radius:8px;box-shadow:0 1px 4px rgba(20,30,40,.07);background:#fff}
-body[data-theme="compact"] h1{font-size:20px;color:#26323D;text-shadow:none}
-body[data-theme="compact"] h1 span{color:#52677A}
-body[data-theme="compact"] .subtitle{display:none}
-body[data-theme="compact"] .tabs{gap:3px;margin:8px 0}
-body[data-theme="compact"] .tab-btn{padding:5px 9px;border:1px solid transparent;border-radius:6px;box-shadow:none;background:transparent;color:#69737E;font-size:11px}
-body[data-theme="compact"] .tab-btn.active{background:#E8EDF1;color:#344B5E;border-color:#D7DDE3}
-body[data-theme="compact"] .card{border:1px solid #D7DDE3;outline:none;border-radius:8px;box-shadow:0 1px 4px rgba(20,30,40,.06);padding:12px}
-body[data-theme="compact"] .layout{gap:8px}
-body[data-theme="compact"] .btn{border-radius:6px;box-shadow:none;padding:6px 9px}
-body[data-theme="compact"] .icon-btn{border-radius:6px;box-shadow:none}
-body[data-theme="compact"] .washi,body[data-theme="compact"] .charm{display:none}
-body[data-theme="compact"] .section-title{font-size:14px}
-
-body[data-theme="night"]{background-image:radial-gradient(circle at 7% 18%,rgba(255,255,255,.65) 0 1px,transparent 1.5px),radial-gradient(circle at 18% 63%,rgba(175,190,255,.55) 0 1px,transparent 1.6px),radial-gradient(circle at 31% 9%,rgba(255,255,255,.7) 0 1.2px,transparent 1.7px),radial-gradient(circle at 44% 76%,rgba(175,190,255,.5) 0 1px,transparent 1.6px),radial-gradient(circle at 57% 31%,rgba(255,255,255,.7) 0 1px,transparent 1.5px),radial-gradient(circle at 69% 88%,rgba(175,190,255,.55) 0 1.2px,transparent 1.7px),radial-gradient(circle at 81% 42%,rgba(255,255,255,.65) 0 1px,transparent 1.5px),radial-gradient(circle at 94% 13%,rgba(175,190,255,.55) 0 1px,transparent 1.5px),linear-gradient(180deg,#0B1028,#151B3A 65%,#10152F);background-size:auto}
-body[data-theme="night"] .app{max-width:1120px}
-body[data-theme="night"] .card{border-radius:18px}
-body[data-theme="night"] .tab-btn{border-radius:999px}
-body[data-theme="night"] .btn{border-radius:999px}
-body[data-theme="night"] .icon-btn{border-radius:50%}
-body[data-theme="night"] .washi{display:none}
-
-body[data-theme="heisei"] .card:nth-child(3n),body[data-theme="heisei"] .card:nth-child(3n+1){transform:none}
-body[data-theme="heisei"] .card{border-radius:20px;box-shadow:5px 5px 0 rgba(230,109,156,.12)}
-body[data-theme="heisei"] .tabs{gap:7px}
-body[data-theme="heisei"] .tab-btn{border-radius:14px}
-
-</style>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/themes.css">
 </head>
 <body>
 <div class="app">
@@ -522,7 +22,6 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
     </div>
     <div class="header-actions">
       <span id="userStatus" class="user-badge" style="display:none;"></span>
-      <span id="syncStatus" class="user-badge" style="display:none;">☁ 同期済み</span>
       <button class="icon-btn" id="openAuth" title="ログイン/登録">👤</button>
       <button class="icon-btn" id="openTheme" title="きせかえ">🎨</button>
       <button class="icon-btn" id="openSettings" title="せってい">⚙️</button>
@@ -683,26 +182,6 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
 </div>
 
 
-<!-- routine date exception modal -->
-<div class="modal-bg" id="routineDateModal">
-  <div class="modal">
-    <h2 id="routineDateModalTitle">📅 ルーティンの実施日</h2>
-    <div class="hint">「この期間はやらない」として扱う日を、あとからでも変更できます。対象外の日は達成率の分母に入りません。</div>
-    <div class="row2" style="margin-top:10px;">
-      <div class="field"><label>開始日</label><input type="date" id="routineDateStart"></div>
-      <div class="field"><label>終了日</label><input type="date" id="routineDateEnd"></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn ghost" id="routineDateExclude">🚫 この期間を対象外にする</button>
-      <button class="btn gray" id="routineDateClose">とじる</button>
-    </div>
-    <div style="margin-top:14px;">
-      <b style="font-size:12px;color:var(--pink-dark);">現在の対象外期間</b>
-      <div id="routineExcludedRanges" style="margin-top:6px;"></div>
-    </div>
-  </div>
-</div>
-
 <!-- money modal -->
 <div class="modal-bg" id="moneyModal">
   <div class="modal">
@@ -724,7 +203,6 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
     <div class="modal-actions"><button class="btn gray" id="budgetCancel">とじる</button><button class="btn" id="budgetSave">💾 予算を保存</button></div>
   </div>
 </div>
-
 <!-- theme modal -->
 <div class="modal-bg" id="themeModal">
   <div class="modal">
@@ -809,9 +287,9 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
   function loadLocalSettings(){
     try{
       const s = JSON.parse(localStorage.getItem(LS_SETTINGS));
-      if(s) return Object.assign({dayStart:'08:00', dayEnd:'22:00', webhook:'', defaultShareStandalone:true, defaultShareTask:false, dayMemos:{}}, s);
+      if(s) return Object.assign({dayStart:'08:00', dayEnd:'22:00', webhook:'', defaultShareStandalone:true, defaultShareTask:false}, s);
     }catch(e){}
-    return {dayStart:'08:00', dayEnd:'22:00', webhook:'', defaultShareStandalone:true, defaultShareTask:false, dayMemos:{}};
+    return {dayStart:'08:00', dayEnd:'22:00', webhook:'', defaultShareStandalone:true, defaultShareTask:false};
   }
   function saveLocalSettings(){ localStorage.setItem(LS_SETTINGS, JSON.stringify(state.settings)); }
   function loadLocalBudgets(){ try{ return JSON.parse(localStorage.getItem(LS_BUDGETS)) || []; }catch(e){ return []; } }
@@ -819,7 +297,8 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
   function loadLocalProjects(){ try{ return JSON.parse(localStorage.getItem(LS_PROJECTS)) || []; }catch(e){ return []; } }
   function saveLocalProjects(){ localStorage.setItem(LS_PROJECTS, JSON.stringify(state.projects)); }
   function loadTheme(){ try{ return localStorage.getItem(LS_THEME) || 'heisei'; }catch(e){ return 'heisei'; } }
-  function applyTheme(id){ const allowed=['heisei','night','minimal','retro','nature']; if(!allowed.includes(id)) id='heisei'; document.body.dataset.theme=id; localStorage.setItem(LS_THEME,id); return id; }
+  function applyTheme(id){ const allowed=['heisei','night','minimal','retro','nature','paper','compact','terminal']; if(!allowed.includes(id)) id='heisei'; document.body.dataset.theme=id; localStorage.setItem(LS_THEME,id); return id; }
+
 
   /* ================= calendar display filters ================= */
   const CALENDAR_FILTER_KEY = 'liflow_calendar_filters_v1';
@@ -925,10 +404,8 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
   }
   function dayRoutineStats(dateStr){
     if(state.calendarScope) return {total:0, done:0, rate:0};
-    const routines = state.routines.filter(r=>r.active!==false && !(Array.isArray(r.excludedDates)&&r.excludedDates.includes(dateStr)));
-    routines.forEach(r=>routineInstanceForDate(r,dateStr));
-    const total = routines.length;
-    const done = routines.filter(r=>routineDone(routineInstanceForDate(r,dateStr))).length;
+    const insts = state.tasks.filter(t=>t.routineId && t.assignedDate===dateStr);
+    const total = insts.length, done = insts.filter(t=>routineDone(t)).length;
     return {total, done, rate: total?Math.round(done/total*100):0};
   }
   function dayMoneyEntries(dateStr){
@@ -1006,28 +483,11 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
     moneyTargetId: null,
     moneyTargetType: null,
     moneyEditingId: null,
-    routineEditingId: null,
     calendarFilters: loadCalendarFilters(),
     collapsedNodes: {},
     calendarScope: null,
     theme: loadTheme()
   };
-
-  function getDayMemo(dateStr){
-    if(!state.settings.dayMemos || typeof state.settings.dayMemos!=='object') state.settings.dayMemos={};
-    return state.settings.dayMemos[dateStr] || '';
-  }
-
-  let dayMemoSaveTimer=null;
-  function saveDayMemo(dateStr, value){
-    if(!state.settings.dayMemos || typeof state.settings.dayMemos!=='object') state.settings.dayMemos={};
-    const text=String(value||'');
-    if(text) state.settings.dayMemos[dateStr]=text;
-    else delete state.settings.dayMemos[dateStr];
-    saveLocalSettings();
-    clearTimeout(dayMemoSaveTimer);
-    dayMemoSaveTimer=setTimeout(()=>requestSync(),600);
-  }
 
   function normalizeData(tasks, events){
     const rawTasks = Array.isArray(tasks) ? tasks : [];
@@ -1098,253 +558,16 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
 
   { const n=normalizeData(loadLocalTasks(),JSON.parse(localStorage.getItem('liflow_events_v1')||'[]')); state.tasks=n.tasks; state.events=n.events; detachLegacyScheduledTasks(); }
 
-  // Firestoreへの保存を直列化し、端末間の「空データ上書き」を防ぐ安全同期層。
+  // Firestoreへの保存を直列化して、短時間に複数回変更しても古い内容で上書きしにくくする。
   let saveQueue = Promise.resolve();
   let firestoreReady = false;
-  let firstSnapshotPending = false;
-  let lastCloudVersion = null;
-  let cloudExists = false;
-  // ローカル変更中にonSnapshotの古いスナップショットがstateへ戻ってくるのを防ぐ。
-  let pendingCloudWrites = 0;
-  let localChangeSeq = 0;
-  let lastSyncedLocalSeq = 0;
-  let syncTimer = null;
-  let syncInFlight = false;
-  let pendingSyncOptions = null;
-  // 最後にstateへ適用したクラウド版。ローカル変更と最新クラウドとの差分を3-way mergeするために使う。
-  let baseCloudState = null;
-  let syncConflict = false;
-  const LS_SYNC_META = 'liflow_sync_meta_v2';
-  const LS_SYNC_BACKUPS = 'liflow_sync_backups_v1';
-  const SYNC_SCHEMA_VERSION = 2;
-
-  function getDeviceId(){
-    let id = localStorage.getItem('liflow_device_id_v1');
-    if(!id){
-      id = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,10);
-      localStorage.setItem('liflow_device_id_v1', id);
-    }
-    return id;
-  }
-
-  function loadSyncMeta(){
-    try{return JSON.parse(localStorage.getItem(LS_SYNC_META)||'{}')||{};}catch(e){return {};}
-  }
-  function saveSyncMeta(meta){
-    try{localStorage.setItem(LS_SYNC_META, JSON.stringify(meta));}catch(e){}
-  }
-
-  function dataCounts(source){
-    const d = source || state;
-    return {
-      tasks:Array.isArray(d.tasks)?d.tasks.length:0,
-      events:Array.isArray(d.events)?d.events.length:0,
-      routines:Array.isArray(d.routines)?d.routines.length:0,
-      projects:Array.isArray(d.projects)?d.projects.length:0,
-      budgets:Array.isArray(d.budgets)?d.budgets.length:0
-    };
-  }
-
-  function totalCount(c){return Object.values(c||{}).reduce((a,b)=>a+(Number(b)||0),0);}
 
   function localHasData(){
-    const c=dataCounts();
-    return totalCount(c)>0;
+    return state.tasks.length > 0 || state.events.length > 0 || state.routines.length > 0;
   }
 
-  function saveSyncBackup(reason){
-    try{
-      const backups=JSON.parse(localStorage.getItem(LS_SYNC_BACKUPS)||'[]');
-      backups.unshift({
-        savedAt:new Date().toISOString(),
-        reason:reason||'before-cloud-write',
-        deviceId:getDeviceId(),
-        counts:dataCounts(),
-        data:JSON.parse(JSON.stringify({tasks:state.tasks,events:state.events,routines:state.routines,projects:state.projects,settings:state.settings,budgets:state.budgets}))
-      });
-      localStorage.setItem(LS_SYNC_BACKUPS,JSON.stringify(backups.slice(0,5)));
-    }catch(e){console.warn('同期バックアップ作成失敗:',e);}
-  }
-
-  function destructiveChangeDetected(before, after){
-    const b=before||{};
-    const a=after||{};
-    const bt=totalCount(b), at=totalCount(a);
-    if(bt<=0) return false;
-    if(at===0) return true;
-    if(at < bt*0.7) return true;
-    const keys=['tasks','events','routines','projects','budgets'];
-    return keys.some(k => Number(b[k]||0)>0 && Number(a[k]||0)===0);
-  }
-
-  function confirmDestructiveSync(before, after){
-    const b=before||{}; const a=after||{};
-    const msg = [
-      '⚠️ クラウド上のデータを大きく減らそうとしています。',
-      '',
-      '現在のクラウド: ' + totalCount(b) + '件',
-      'この端末から保存: ' + totalCount(a) + '件',
-      '',
-      '別の端末の古いデータや、空のデータで上書きしていないか確認してください。',
-      'この保存を続けますか？'
-    ].join('\n');
-    return window.confirm(msg);
-  }
-
-  function cloneData(source){
-    return JSON.parse(JSON.stringify({
-      tasks:Array.isArray(source&&source.tasks)?source.tasks:[],
-      events:Array.isArray(source&&source.events)?source.events:[],
-      routines:Array.isArray(source&&source.routines)?source.routines:[],
-      projects:Array.isArray(source&&source.projects)?source.projects:[],
-      settings:Object.assign({dayStart:'08:00',dayEnd:'22:00',webhook:'',dayMemos:{}},source&&source.settings||{}),
-      budgets:Array.isArray(source&&source.budgets)?source.budgets:[]
-    }));
-  }
-
-  function stableValue(value){
-    if(Array.isArray(value)) return value.map(stableValue);
-    if(value && typeof value==='object'){
-      const out={};
-      Object.keys(value).sort().forEach(k=>out[k]=stableValue(value[k]));
-      return out;
-    }
-    return value;
-  }
-
-  function sameValue(a,b){
-    return JSON.stringify(stableValue(a))===JSON.stringify(stableValue(b));
-  }
-
-  function itemMap(arr){
-    const m=new Map();
-    (Array.isArray(arr)?arr:[]).forEach(x=>{ if(x && x.id!=null) m.set(String(x.id),x); });
-    return m;
-  }
-
-  // moneyはtask/eventの中に入っているため、同じtaskを別端末から同時編集しても
-  // 「別のmoneyを追加しただけ」なら両方を残せるように内側も3-way mergeする。
-  function mergeMoney(baseArr,localArr,remoteArr,where){
-    const b=itemMap(baseArr), l=itemMap(localArr), r=itemMap(remoteArr);
-    const ids=new Set([...b.keys(),...l.keys(),...r.keys()]);
-    const out=[]; const conflicts=[];
-    ids.forEach(id=>{
-      const bv=b.get(id), lv=l.get(id), rv=r.get(id);
-      const lc=!sameValue(bv,lv), rc=!sameValue(bv,rv);
-      if(lc && rc && !sameValue(lv,rv)){
-        conflicts.push(where+' / money:'+id); return;
-      }
-      const chosen=lc?lv:rv;
-      if(chosen!==undefined) out.push(chosen);
-    });
-    return {value:out,conflicts};
-  }
-
-  function mergeRecord(baseRec,localRec,remoteRec,where){
-    const localChanged=!sameValue(baseRec,localRec);
-    const remoteChanged=!sameValue(baseRec,remoteRec);
-    if(!localChanged) return {value:remoteRec,conflicts:[]};
-    if(!remoteChanged) return {value:localRec,conflicts:[]};
-    if(sameValue(localRec,remoteRec)) return {value:localRec,conflicts:[]};
-
-    // task/eventではmoneyだけが別々に変わったケースを救済する。
-    const isTaskOrEvent=localRec && (localRec.kind==='task' || remoteRec && remoteRec.kind==='task' || where.startsWith('tasks/') || where.startsWith('events/'));
-    if(isTaskOrEvent && localRec && remoteRec && Array.isArray(localRec.money) && Array.isArray(remoteRec.money)){
-      const baseNoMoney=Object.assign({},baseRec); delete baseNoMoney.money;
-      const localNoMoney=Object.assign({},localRec); delete localNoMoney.money;
-      const remoteNoMoney=Object.assign({},remoteRec); delete remoteNoMoney.money;
-      if(sameValue(baseNoMoney,localNoMoney) || sameValue(baseNoMoney,remoteNoMoney)){
-        const mm=mergeMoney(baseRec&&baseRec.money,localRec.money,remoteRec.money,where);
-        if(!mm.conflicts.length){
-          return {value:Object.assign({}, sameValue(baseNoMoney,localNoMoney)?remoteNoMoney:localNoMoney,{money:mm.value}),conflicts:[]};
-        }
-      }
-    }
-    return {value:null,conflicts:[where]};
-  }
-
-  function mergeCollection(name,baseArr,localArr,remoteArr){
-    const b=itemMap(baseArr), l=itemMap(localArr), r=itemMap(remoteArr);
-    const ids=new Set([...b.keys(),...l.keys(),...r.keys()]);
-    const out=[]; const conflicts=[];
-    ids.forEach(id=>{
-      const bv=b.get(id), lv=l.get(id), rv=r.get(id);
-      const localChanged=!sameValue(bv,lv);
-      const remoteChanged=!sameValue(bv,rv);
-
-      if(!localChanged){
-        if(rv!==undefined) out.push(rv);
-        return;
-      }
-      if(!remoteChanged){
-        if(lv!==undefined) out.push(lv);
-        return;
-      }
-      if(sameValue(lv,rv)){
-        if(lv!==undefined) out.push(lv);
-        return;
-      }
-
-      // 両方で削除した場合は削除で確定。
-      if(lv===undefined && rv===undefined) return;
-
-      const merged=mergeRecord(bv,lv,rv,name+'/'+id);
-      if(merged.conflicts.length){ conflicts.push(...merged.conflicts); }
-      else if(merged.value!==undefined && merged.value!==null) out.push(merged.value);
-    });
-    return {value:out,conflicts};
-  }
-
-  function mergeSettings(base,local,remote){
-    const keys=new Set([...Object.keys(base||{}),...Object.keys(local||{}),...Object.keys(remote||{})]);
-    const out=Object.assign({},remote||{}); const conflicts=[];
-    keys.forEach(k=>{
-      const bv=base?base[k]:undefined, lv=local?local[k]:undefined, rv=remote?remote[k]:undefined;
-      const lc=!sameValue(bv,lv), rc=!sameValue(bv,rv);
-      if(lc && rc && !sameValue(lv,rv)) conflicts.push('settings.'+k);
-      else if(lc) out[k]=lv;
-    });
-    return {value:out,conflicts};
-  }
-
-  function threeWayMerge(base,local,remote){
-    const result={}; let conflicts=[];
-    ['tasks','events','routines','projects','budgets'].forEach(k=>{
-      const m=mergeCollection(k,base&&base[k],local&&local[k],remote&&remote[k]);
-      result[k]=m.value; conflicts=conflicts.concat(m.conflicts);
-    });
-    const sm=mergeSettings(base&&base.settings,local&&local.settings,remote&&remote.settings);
-    result.settings=sm.value; conflicts=conflicts.concat(sm.conflicts);
-    return {value:result,conflicts};
-  }
-
-  function makePayload(version,data){
-    const d=cloneData(data||state);
-    return JSON.parse(JSON.stringify({
-      schemaVersion:SYNC_SCHEMA_VERSION,
-      dataVersion:version,
-      updatedAt:Date.now(),
-      updatedBy:getDeviceId(),
-      counts:dataCounts(d),
-      tasks:d.tasks,
-      events:d.events,
-      routines:d.routines,
-      projects:d.projects,
-      settings:d.settings,
-      budgets:d.budgets
-    }));
-  }
-
-  function setSyncStatus(text,visible){
-    const el=document.getElementById('syncStatus');
-    if(!el) return;
-    el.textContent=text;
-    el.style.display=(visible===false?'none':'inline-block');
-  }
-
-  function requestSync(options){
-    localChangeSeq++;
-    pendingSyncOptions=options||{};
+  function syncData(){
+    // ローカルにも常にキャッシュしておく。
     saveLocalTasks();
     localStorage.setItem('liflow_events_v1', JSON.stringify(state.events));
     saveLocalRoutines();
@@ -1353,124 +576,25 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
     saveLocalProjects();
 
     if(!state.currentUser || !window.fbMethods || !firestoreReady){
-      setSyncStatus('☁ 同期待ち',true);
-      return;
+      return Promise.resolve();
     }
 
-    setSyncStatus('☁ 同期中…',true);
-    clearTimeout(syncTimer);
-    syncTimer=setTimeout(async()=>{
-      syncTimer=null;
-      if(syncInFlight) return;
-      syncInFlight=true;
-      const targetSeq=localChangeSeq;
-      const optionsToUse=pendingSyncOptions||{};
-      pendingSyncOptions=null;
-      try{
-        await syncData(optionsToUse,targetSeq);
-      }finally{
-        syncInFlight=false;
-        if(localChangeSeq>targetSeq){
-          setSyncStatus('☁ 同期中…',true);
-          clearTimeout(syncTimer);
-          syncTimer=setTimeout(()=>requestSync(optionsToUse),250);
-        }else if(firestoreReady){
-          setSyncStatus('✓ 同期済み',true);
-        }else{
-          setSyncStatus('⚠ 同期失敗',true);
-        }
-      }
-    },500);
-  }
+    const uid = state.currentUser.uid;
+    const ref = window.fbMethods.doc(window.fbDb, 'users', uid);
+    const payload = JSON.parse(JSON.stringify({
+      tasks: state.tasks,
+      events: state.events,
+      routines: state.routines,
+      projects: state.projects,
+      settings: state.settings,
+      budgets: state.budgets
+    }));
 
-  async function syncData(options,targetSeq){
-    options=options||{};
-    const localSeqAtStart=targetSeq==null?localChangeSeq:targetSeq;
-
-    saveLocalTasks();
-    localStorage.setItem('liflow_events_v1', JSON.stringify(state.events));
-    saveLocalRoutines();
-    saveLocalSettings();
-    saveLocalBudgets();
-    saveLocalProjects();
-
-    if(!state.currentUser || !window.fbMethods || !firestoreReady){
-      return Promise.resolve(false);
-    }
-
-    pendingCloudWrites++;
-    const uid=state.currentUser.uid;
-    const ref=window.fbMethods.doc(window.fbDb,'users',uid);
-
-    saveQueue=saveQueue.then(async()=>{
-      let remoteSnap;
-      try{ remoteSnap=await window.fbMethods.getDoc(ref); }
-      catch(e){ throw new Error('クラウドの確認に失敗したため、安全のため保存を中止しました。'); }
-
-      const remoteRaw=remoteSnap.exists()?remoteSnap.data():null;
-      const remote=cloneData(remoteRaw||{});
-      const base=cloneData(baseCloudState||{});
-      const local=cloneData(state);
-      const remoteVersion=remoteRaw ? Number(remoteRaw.dataVersion||0) : 0;
-      const knownVersion=lastCloudVersion==null ? null : Number(lastCloudVersion);
-
-      // 初回移行など、まだbaseが確立していない場合だけ全体を初期データとして扱う。
-      const hasBase=baseCloudState!==null;
-      let merged;
-      if(!hasBase){
-        merged={value:local,conflicts:[]};
-      }else{
-        merged=threeWayMerge(base,local,remote);
-      }
-
-      if(merged.conflicts.length){
-        syncConflict=true;
-        firestoreReady=false;
-        showToast('⚠️ 同じデータを別端末でも編集したため、上書きを止めたよ。');
-        console.warn('同期競合:',merged.conflicts);
-        throw new Error('同期競合: '+merged.conflicts.join(', '));
-      }
-
-      const mergedCounts=dataCounts(merged.value);
-      const remoteCounts=remoteRaw && remoteRaw.counts ? remoteRaw.counts : dataCounts(remoteRaw||{});
-      if(remoteRaw && !options.skipSafetyCheck && destructiveChangeDetected(remoteCounts,mergedCounts)){
-        if(!confirmDestructiveSync(remoteCounts,mergedCounts)){
-          showToast('安全のためクラウド保存を中止したよ。');
-          return false;
-        }
-      }
-
-      saveSyncBackup(remoteRaw?'before-cloud-merge':'before-cloud-create');
-      const nextVersion=Math.max(remoteVersion,knownVersion||0)+1;
-      const payload=makePayload(nextVersion,merged.value);
-      await window.fbMethods.setDoc(ref,payload,{merge:true});
-
-      // 保存中にさらにローカル操作が入った場合は、その新しいstateを古い書き込み結果で巻き戻さない。
-      // クラウド側の結果だけを新しいbaseとして記録し、次回同期で差分を3-way mergeする。
-      const normalized=normalizeData(payload.tasks,payload.events);
-      baseCloudState=cloneData(merged.value);
-      if(localChangeSeq===localSeqAtStart){
-        state.tasks=normalized.tasks;
-        state.events=normalized.events;
-        detachLegacyScheduledTasks();
-        state.routines=(Array.isArray(payload.routines)?payload.routines:[]).map(r=>Object.assign({excludedDates:[]},r));
-        state.projects=Array.isArray(payload.projects)?payload.projects:[];
-        state.budgets=Array.isArray(payload.budgets)?payload.budgets:[];
-        state.settings=Object.assign({dayStart:'08:00',dayEnd:'22:00',webhook:''},payload.settings||{});
-        lastSyncedLocalSeq=localSeqAtStart;
-      }
-      lastCloudVersion=nextVersion;
-      cloudExists=true;
-      syncConflict=false;
-      saveSyncMeta({uid,deviceId:getDeviceId(),lastCloudVersion:nextVersion,lastSyncAt:Date.now(),counts:dataCounts()});
-      return true;
-    }).catch(e=>{
-      console.error('Firestore保存失敗:',e);
-      if(e && e.message && e.message.indexOf('同期競合')>=0) return false;
-      showToast('データ保存に失敗したよ💦（安全のため上書きしていません）');
-      return false;
-    }).finally(()=>{
-      pendingCloudWrites=Math.max(0,pendingCloudWrites-1);
+    saveQueue = saveQueue.then(()=>
+      window.fbMethods.setDoc(ref, payload, { merge:true })
+    ).catch(e=>{
+      console.error('Firestore保存失敗:', e);
+      showToast('データ保存に失敗したよ💦');
     });
 
     return saveQueue;
@@ -1479,147 +603,99 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
   /* ================= firebase auth init ================= */
   function initAuth(){
     if(!window.fbAuth || !window.fbMethods || !window.fbMethods.onAuthStateChanged){
-      setTimeout(initAuth,200);
+      setTimeout(initAuth, 200);
       return;
     }
 
-    window.fbMethods.onAuthStateChanged(window.fbAuth,(user)=>{
-      state.currentUser=user;
-      firestoreReady=false;
-      lastCloudVersion=null;
-      cloudExists=false;
-      baseCloudState=null;
-      syncConflict=false;
-      localChangeSeq=0;
-      lastSyncedLocalSeq=0;
-      clearTimeout(syncTimer);
-      syncTimer=null;
-      syncInFlight=false;
-      pendingSyncOptions=null;
+    window.fbMethods.onAuthStateChanged(window.fbAuth, (user)=>{
+      state.currentUser = user;
+      firestoreReady = false;
 
-      const statusEl=document.getElementById('userStatus');
-      const authLogoutBtn=document.getElementById('authLogoutBtn');
+      const statusEl = document.getElementById('userStatus');
+      const authLogoutBtn = document.getElementById('authLogoutBtn');
 
       if(state.unsubscribeFirestore){
         state.unsubscribeFirestore();
-        state.unsubscribeFirestore=null;
+        state.unsubscribeFirestore = null;
       }
 
       if(user){
-        statusEl.textContent=user.email||'ログイン中';
-        statusEl.style.display='inline-block';
-        authLogoutBtn.style.display='inline-block';
-        setSyncStatus('☁ 同期確認中…',true);
+        statusEl.textContent = user.email || 'ログイン中';
+        statusEl.style.display = 'inline-block';
+        authLogoutBtn.style.display = 'inline-block';
 
-        const ref=window.fbMethods.doc(window.fbDb,'users',user.uid);
-        let firstSnapshot=true;
-        firstSnapshotPending=true;
+        const ref = window.fbMethods.doc(window.fbDb, 'users', user.uid);
+        let firstSnapshot = true;
 
-        state.unsubscribeFirestore=window.fbMethods.onSnapshot(ref,async(docSnap)=>{
+        state.unsubscribeFirestore = window.fbMethods.onSnapshot(ref, async (docSnap)=>{
           if(docSnap.exists()){
-            const data=docSnap.data();
-            cloudExists=true;
-            const incomingVersion=Number(data.dataVersion||0);
+            const data = docSnap.data();
 
-            // お金の追加・編集直後などに、書き込み前の古いsnapshotが届くことがある。
-            // そのsnapshotをstateへ反映すると「一瞬表示→消える」ように見えるため、
-            // ローカル変更の保存待ち中はsnapshotからstateを巻き戻さない。
-            if(pendingCloudWrites>0 || localChangeSeq>lastSyncedLocalSeq){
-              const known=lastCloudVersion==null?null:Number(lastCloudVersion);
-              if(known!==null && incomingVersion<=known) return;
-              // 書き込み待ち中に別端末の新しい版が届いても、ここでstateを上書きしない。
-              // 次のsyncData()がbase/local/remoteの3-way mergeで競合判定する。
-              if(known!==null && incomingVersion>known){
-                showToast('⚠️ 別の端末で更新された可能性があるため、同期確認中だよ。');
-                return;
-              }
-            }
+            // Firestoreを正としてstateへ反映する。ここでは絶対に保存し直さない。
+            const normalized = normalizeData(data.tasks, data.events);
+            state.tasks = normalized.tasks;
+            state.events = normalized.events;
+            const migratedLegacy = detachLegacyScheduledTasks();
+            state.routines = (Array.isArray(data.routines) ? data.routines : []).map(r=>Object.assign({excludedDates:[]}, r));
+            state.projects = Array.isArray(data.projects) ? data.projects : [];
+            state.settings = Object.assign(
+              {dayStart:'08:00', dayEnd:'22:00', webhook:''},
+              data.settings || {}
+            );
 
-            lastCloudVersion=incomingVersion;
-            saveSyncMeta({uid:user.uid,deviceId:getDeviceId(),lastCloudVersion,lastCloudUpdateAt:data.updatedAt||null,counts:data.counts||dataCounts(data)});
-
-            // Firestoreを正としてstateへ反映。ここでは自動保存し直さない。
-            const normalized=normalizeData(data.tasks,data.events);
-            state.tasks=normalized.tasks;
-            state.events=normalized.events;
-            const migratedLegacy=detachLegacyScheduledTasks();
-            state.routines=(Array.isArray(data.routines)?data.routines:[]).map(r=>Object.assign({excludedDates:[]},r));
-            state.projects=Array.isArray(data.projects)?data.projects:[];
-            state.budgets=Array.isArray(data.budgets)?data.budgets:[];
-            state.settings=Object.assign({dayStart:'08:00',dayEnd:'22:00',webhook:'',dayMemos:{}},data.settings||{});
-            baseCloudState=cloneData(state);
-            syncConflict=false;
-
-            localStorage.setItem(LS_OWNER,user.uid);
-            firestoreReady=true;
-            firstSnapshotPending=false;
-            if(migratedLegacy) await syncData({skipSafetyCheck:true});
+            localStorage.setItem(LS_OWNER, user.uid);
+            firestoreReady = true;
+            if(migratedLegacy) await syncData();
             render();
+            firstSnapshot = false;
             return;
           }
 
-          // Firestoreにデータがない場合、端末のデータを勝手に空データで消さない。
+          // 初回ログインでFirestore側にデータがない場合だけ、
+          // このブラウザにある未ログイン時のデータを移行する。
           if(firstSnapshot){
-            firstSnapshot=false;
-            firstSnapshotPending=false;
-            const owner=localStorage.getItem(LS_OWNER);
-            const canMigrate=!owner || owner===user.uid;
+            firstSnapshot = false;
+            const owner = localStorage.getItem(LS_OWNER);
+            const canMigrate = !owner || owner === user.uid;
+
+            firestoreReady = true;
 
             if(canMigrate && localHasData()){
-              const c=dataCounts();
-              const ok=window.confirm(
-                '☁️ このアカウントにはまだクラウドデータがありません。\n\n' +
-                'この端末には ' + totalCount(c) + '件のデータがあります。\n' +
-                'この端末のデータをクラウドへ移行しますか？\n\n' +
-                '「キャンセル」を選ぶと、クラウドには何も書き込みません。'
-              );
-              if(ok){
-                localStorage.setItem(LS_OWNER,user.uid);
-                firestoreReady=true;
-                await syncData({skipSafetyCheck:true});
-                showToast('この端末のデータをクラウドへ移行したよ✨');
-              }else{
-                firestoreReady=false;
-                showToast('クラウド同期は停止中。データはこの端末に残っているよ。');
-              }
+              localStorage.setItem(LS_OWNER, user.uid);
+              await syncData();
+              showToast('このアカウントにデータを同期したよ✨');
             }else{
-              // 本当に空の新規アカウントだけ空データを作る。
-              state.tasks=[];
-              state.events=[];
-              state.routines=[];
-              state.projects=[];
-              state.budgets=[];
-              state.settings=loadLocalSettings();
-              baseCloudState=cloneData({tasks:[],events:[],routines:[],projects:[],settings:{dayStart:'08:00',dayEnd:'22:00',webhook:'',dayMemos:{}},budgets:[]});
-              localStorage.setItem(LS_OWNER,user.uid);
-              firestoreReady=true;
-              await syncData({skipSafetyCheck:true});
+              // 完全な新規アカウントなら空データを作る。
+              state.tasks = [];
+              state.events = [];
+              state.routines = [];
+              state.projects = [];
+              state.settings = loadLocalSettings();
+              localStorage.setItem(LS_OWNER, user.uid);
+              await syncData();
               render();
             }
           }
-        },(error)=>{
-          console.error('Firestore同期エラー:',error);
-          firestoreReady=false;
-          setSyncStatus('⚠ 同期失敗',true);
-          showToast('クラウド同期に失敗したよ💦 データはこの端末に残してあるよ。');
+        }, (error)=>{
+          console.error('Firestore同期エラー:', error);
+          firestoreReady = false;
+          showToast('クラウド同期に失敗したよ💦');
         });
       }else{
-        statusEl.style.display='none';
-        authLogoutBtn.style.display='none';
-        setSyncStatus('',false);
-        const normalized=normalizeData(loadLocalTasks(),JSON.parse(localStorage.getItem('liflow_events_v1')||'[]'));
-        state.tasks=normalized.tasks;
-        state.events=normalized.events;
-        state.routines=loadLocalRoutines().map(r=>Object.assign({excludedDates:[]},r));
-        state.projects=loadLocalProjects();
-        state.budgets=loadLocalBudgets();
+        statusEl.style.display = 'none';
+        authLogoutBtn.style.display = 'none';
+        const normalized = normalizeData(loadLocalTasks(), JSON.parse(localStorage.getItem('liflow_events_v1')||'[]'));
+        state.tasks = normalized.tasks;
+        state.events = normalized.events;
+        state.routines = loadLocalRoutines().map(r=>Object.assign({excludedDates:[]}, r));
         detachLegacyScheduledTasks();
-        state.settings=loadLocalSettings();
+        state.settings = loadLocalSettings();
+        state.budgets = loadLocalBudgets();
         render();
       }
     });
   }
-  setTimeout(initAuth,500);
+  setTimeout(initAuth, 500);
 
   /* ================= date / time utils ================= */
   function pad2(n){ return String(n).padStart(2,'0'); }
@@ -2063,74 +1139,74 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
   }
 
   /* ================= view renderers ================= */
+  // A task belongs to a day when it is explicitly assigned to that day OR
+  // when a planned event for that task is scheduled on that day.  The latter
+  // is important because a task is a goal, while the event is its time slot.
+  function taskIsTodayTask(t, dateStr){
+    if(!t || t.routineId) return false;
+    if(t.assignedDate === dateStr) return true;
+    return (state.events||[]).some(e =>
+      e && e.taskId === t.id && e.origin !== 'spontaneous' && e.date === dateStr
+    );
+  }
+
+  function renderDayTaskPanel(dateStr){
+    const tasks=(state.tasks||[]).filter(t=>taskIsTodayTask(t,dateStr) && !isRoutineTask(t));
+    const open=tasks.filter(t=>t.status!=='done');
+    const done=tasks.filter(t=>t.status==='done');
+    const taskRows=open.map(t=>
+      '<div class="day-task-row">'
+      +'<button class="day-task-check" data-day-task-done="'+escapeHtml(t.id)+'" title="完了にする">□</button>'
+      +'<div class="day-task-main"><div class="day-task-name">'+escapeHtml(t.name)+'</div>'
+      +(t.deadline?'<div class="day-task-meta">〆'+formatDateJP(t.deadline)+'</div>':'')
+      +'</div>'
+      +'</div>'
+    ).join('');
+    const doneHtml=done.length
+      ? '<details class="day-task-done-details"><summary>🎉 今日完了したタスク '+done.length+'件</summary>'
+        +'<div class="day-task-done-list">'+done.map(t=>'<div class="day-task-done-row"><span>✓</span><span>'+escapeHtml(t.name)+'</span></div>').join('')+'</div></details>'
+      : '';
+    return '<div class="card day-task-panel"><div class="washi" style="background:repeating-linear-gradient(45deg, var(--pink) 0 6px, #FFF0F5 6px 12px);"></div>'
+      +'<div class="day-section-head"><h2>📝 今日のタスク</h2><button class="btn small" data-open-task-modal="1" data-default-date="'+dateStr+'">＋タスク</button></div>'
+      +(taskRows||'<div class="empty">この日に割り当てられた未完了タスクはないよ🌷</div>')
+      +doneHtml+'</div>';
+  }
+
+  function renderReschedulePanel(dateStr){
+    const today=todayStr(), now=nowMin();
+    const candidates=(state.events||[]).filter(e=>{
+      if(e.origin==='spontaneous' || !e.taskId || e.status==='done' || e.rescheduleDismissed) return false;
+      const t=state.tasks.find(x=>x.id===e.taskId);
+      if(!t || t.status==='done' || !e.date) return false;
+      return e.date < today || (e.date===today && e.endMin!=null && e.endMin<=now);
+    });
+    const rows=candidates.map(e=>{
+      const t=state.tasks.find(x=>x.id===e.taskId);
+      return '<div class="reschedule-row">'
+        +'<div class="reschedule-main"><b>'+escapeHtml(t?t.name:e.name)+'</b>'
+        +'<span>'+formatDateJP(e.date)+' '+(e.startMin!=null?minToTimeStr(e.startMin):'')+'〜'+(e.endMin!=null?minToTimeStr(e.endMin):'')+'</span></div>'
+        +'<div class="reschedule-actions">'
+        +'<button class="btn small blue" data-reschedule="tomorrow" data-id="'+escapeHtml(e.id)+'">明日に回す</button>'
+        +'<button class="btn small ghost" data-reschedule="edit" data-id="'+escapeHtml(e.id)+'">日時を指定</button>'
+        +'<button class="btn small gray" data-reschedule="dismiss" data-id="'+escapeHtml(e.id)+'">今回は予定なし</button>'
+        +'</div></div>';
+    }).join('');
+    if(!rows) return '';
+    return '<div class="card reschedule-panel"><div class="washi" style="background:repeating-linear-gradient(45deg, var(--blue) 0 6px, #E9F9FF 6px 12px);"></div>'
+      +'<div class="day-section-head"><h2>⚠️ リスケが必要</h2><span class="reschedule-count">'+candidates.length+'件</span></div>'
+      +'<div class="reschedule-note">予定が終わったのに、紐づくタスクがまだ未完了のものだよ。放置せず、次の予定を決めよう。</div>'
+      +rows+'</div>';
+  }
+
   function renderDayView(){
     const dateStr = state.viewDate;
     ensureRoutineInstances(dateStr);
     recalcScheduleForDate(dateStr);
     const isToday = dateStr === todayStr();
-
     const timelineHtml = buildTimelineHTML(dateStr, isToday);
-
     const allItems = dayItems(dateStr);
-    const allDayTasks = allItems.filter(x=>x.itemType==='task' && !x.item.routineId).map(x=>x.item);
     const allDayEvents = allItems.filter(x=>x.itemType==='event').map(x=>x.item);
-    const notDone = allDayTasks.filter(t=> t.status!=='done');
-    const done = allDayTasks.filter(t=> t.status==='done');
-    
-    // 今日の達成チェック：その日に直接割り当てたタスク＋その日の予定に紐づくタスクをまとめる。
-    // 予定に紐づくタスクは dayItems() では重複を避けるため除外されるので、ここでは別に拾う。
-    const achievementMap = new Map();
-    allDayTasks.forEach(t => { if(!t.routineId) achievementMap.set(t.id, t); });
-    allDayEvents.forEach(e => {
-      if(e.taskId){
-        const t = state.tasks.find(x => x.id===e.taskId && !x.routineId);
-        if(t) achievementMap.set(t.id, t);
-      }
-    });
-    const achievementTasks = Array.from(achievementMap.values());
-    const achievementDone = achievementTasks.filter(t => t.status==='done').length;
-
-    let tableRows = '';
-    if (achievementTasks.length > 0) {
-      tableRows = achievementTasks.map(t => {
-        const isDone = t.status === 'done';
-        const linkedEvents = allDayEvents.filter(e => e.taskId===t.id).sort((a,b)=>(a.startMin??9999)-(b.startMin??9999));
-        const timeStr = linkedEvents.length
-          ? linkedEvents.map(e => e.startMin!=null && e.endMin!=null ? minToTimeStr(e.startMin)+'〜'+minToTimeStr(e.endMin) : '時間未定').join('<br>')
-          : (t.scheduledStart != null ? minToTimeStr(t.scheduledStart) : '時間未定');
-        const statusHtml = isDone
-          ? '<span style="color:#2e7d32;font-weight:bold;">達成！</span>'
-          : (Number(t.progress||0)>0 ? '<span style="color:#9A7A35;font-weight:bold;">途中 '+Number(t.progress||0)+'%</span>' : '<span style="color:#888;">未達</span>');
-        return '<tr>'
-          + '<td class="status-col">'+(isDone ? '☑️' : (Number(t.progress||0)>0 ? '◐' : '□'))+'</td>'
-          + '<td><b>'+escapeHtml(t.name)+'</b></td>'
-          + '<td>'+timeStr+'</td>'
-          + '<td>'+statusHtml+'</td>'
-          + '</tr>';
-      }).join('');
-    } else {
-      tableRows = '<tr><td colspan="4" class="empty">この日に関係するタスクはありません</td></tr>';
-    }
-
-    const tableHtml = '<div class="achievement-summary">'+achievementDone+'/'+achievementTasks.length+'件達成'+(achievementTasks.length?' ✨':'')+'</div>'
-      + '<table class="task-table">'
-      + '<thead><tr><th></th><th>タスク名</th><th>予定時間</th><th>状況</th></tr></thead>'
-      + '<tbody>' + tableRows + '</tbody>'
-      + '</table>';
-
-    const queueTasks = notDone.concat(done).sort((a,b)=>{
-      const rank = s => s==='active' ? 0 : s==='paused' ? 1 : s==='planned' ? 2 : 3;
-      const r = rank(a.status)-rank(b.status);
-      if(r!==0) return r;
-      return (a.scheduledStart==null?9999:a.scheduledStart) - (b.scheduledStart==null?9999:b.scheduledStart);
-    });
-    const queueHtml = (queueTasks.filter(t=>!t.routineId).map(t=>taskCardHTML(t,{showDate:false,allowUnassign:true})).concat(allDayEvents.map(e=>eventCardHTML(e))).join('')) || '<div class="empty">出来事がまだないよ〜💤<br>「＋ついか」から追加してね！</div>';
-
-    const pushedList = state.tasks.filter(t=> t.pushedFromDate===dateStr && t.assignedDate===addDays(dateStr,1) && t.status!=='done');
-    const pushedHtml = pushedList.length ? pushedList.map(t=>
-        '<div class="task-card tomorrow-card"><div class="task-name">'+escapeHtml(t.name)+'</div>'
-        + '<div class="task-meta">⌛'+t.duration+'分・今日の時間には入りきらなかったよ</div></div>').join('')
-      : '<div class="empty">今日中に収まってるよ、えらい🌟</div>';
+    const queueHtml = allDayEvents.map(e=>eventCardHTML(e)).join('') || '<div class="empty">出来事がまだないよ〜💤<br>「＋予定・記録」から追加してね！</div>';
 
     return '<div class="day-nav">'
       + '<button class="icon-btn nav-arrow" data-goto-date="'+addDays(dateStr,-1)+'">◀</button>'
@@ -2146,16 +1222,14 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
       + '<h2>📅 '+(isToday?'きょう':'この日')+'のタイムライン'+(isToday?(' <span class="now-badge">'+minToTimeStr(nowMin())+' 現在</span>'):'')+'</h2>'
       + '<div class="timeline-scroll" id="timelineScrollContainer">'+timelineHtml+'</div></div>'
       + renderPlanActualComparison(dateStr)
-      + '<div class="card tomorrow-card"><div class="washi" style="background:repeating-linear-gradient(45deg, var(--blue) 0 6px, #E9F9FF 6px 12px);"></div>'
-      + '<h2>🌙 明日へ回すリスト</h2>'+pushedHtml+'</div>'
+      + renderReschedulePanel(dateStr)
+      + '<div class="card"><div class="washi"></div>'
+      + '<div class="day-section-head"><h2>📝 予定・記録</h2><button class="btn small ghost" data-open-event-modal="1" data-default-date="'+dateStr+'">＋予定・記録</button></div>'
+      + queueHtml + '</div>'
       + '</div>'
       + '<div>'
-      + '<div class="card"><div class="washi" style="background:repeating-linear-gradient(45deg, var(--lavender) 0 6px, #F3ECFF 6px 12px);"></div>'
-      + '<h2>📊 達成チェックリスト（表）</h2>' + tableHtml
-      + '<div class="day-memo-card"><div class="day-memo-title">💭 そのとき思いついたこと</div><textarea id="dayMemo" rows="3" maxlength="1000" placeholder="ふと思ったこと、気づいたこと、あとで調べたいことなど…">'+escapeHtml(getDayMemo(dateStr))+'</textarea><div class="day-memo-hint">この日のメモとして保存されるよ</div></div>'
+      + renderDayTaskPanel(dateStr)
       + renderRoutineTodayPanel(dateStr)
-      + '<h2>📝 予定・記録 <span style="margin-left:auto;display:flex;gap:6px;"><button class="btn small ghost" data-open-event-modal="1" data-default-date="'+dateStr+'">＋予定・記録</button><button class="btn small" data-open-task-modal="1" data-default-date="'+dateStr+'">＋タスク</button></span></h2>'
-      + queueHtml + '</div>'
       + '</div>'
       + '</div>';
   }
@@ -2165,12 +1239,16 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
     const dates = [0,1,2,3,4,5,6].map(i=>addDays(start,i));
     dates.forEach(d=>{ ensureRoutineInstances(d); recalcScheduleForDate(d); });
     const todayS = todayStr();
-    let totalWeekRoutine = 0, totalWeekRoutineDone = 0;
+    let totalWeekTasks = 0, totalWeekDone = 0, totalWeekRoutine = 0, totalWeekRoutineDone = 0;
 
     const cols = dates.map(d=>{
       const dObj = strToDate(d);
       const wd = dObj.getDay();
       const isToday = d===todayS;
+      const achievement = dayCalendarItems(d).map(x=>x.item);
+      const doneCount = achievement.filter(t=>t.status==='done').length;
+      totalWeekTasks += achievement.length;
+      totalWeekDone += doneCount;
       const rstat = dayRoutineStats(d);
       totalWeekRoutine += rstat.total; totalWeekRoutineDone += rstat.done;
 
@@ -2178,7 +1256,7 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
 
       return '<div class="week-col '+(isToday?'today':'')+'">'
         + '<div class="week-col-head '+(wd===0?'sun':wd===6?'sat':'')+'" data-goto-date="'+d+'">'+(dObj.getMonth()+1)+'/'+dObj.getDate()+'('+WD[wd]+')</div>'
-        + '<div class="wk-stats">'+(rstat.total > 0 ? '🔁 '+rstat.done+'/'+rstat.total : '-')+'</div>'
+        + '<div class="wk-stats">'+(achievement.length > 0 ? doneCount+'/'+achievement.length+' 💖' : '-')+'</div>'
         + cellHtml + '</div>';
     }).join('');
 
@@ -2189,7 +1267,7 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
       + '<button class="btn small ghost" data-this-week="1">今週</button>'
       + '</div>'
       + calendarScopeBanner()
-      + '<div class="card"><div class="washi"></div><h2>🗓 週の予定（🔁 ルーティン '+totalWeekRoutineDone+'/'+totalWeekRoutine+'）</h2>'
+      + '<div class="card"><div class="washi"></div><h2>🗓 週の予定と達成状況（達成 '+totalWeekDone+'/'+totalWeekTasks+' 💖・🔁 '+totalWeekRoutineDone+'/'+totalWeekRoutine+'）</h2>'
       + calendarFilterControl('week')
       + '<div class="week-grid">'+cols+'</div></div>';
   }
@@ -2205,19 +1283,22 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
     cells.forEach(d=>{ ensureRoutineInstances(d); recalcScheduleForDate(d); });
     const monthIdx = base.getMonth();
     const todayS = todayStr();
-    let totalMonthRoutine = 0, totalMonthRoutineDone = 0;
+    let totalMonthTasks = 0, totalMonthDone = 0, totalMonthRoutine = 0, totalMonthRoutineDone = 0;
 
     const weekdayRow = WD.map((w,i)=> '<div style="'+(i===0?'color:#FF6F91':i===6?'color:#4FA8D8':'')+'">'+w+'</div>').join('');
     const cellsHtml = cells.map(d=>{
       const dObj = strToDate(d);
       const other = dObj.getMonth()!==monthIdx;
       const isToday = d===todayS;
+      const achievement = dayCalendarItems(d).map(x=>x.item);
+      const doneCount = achievement.filter(t=>t.status==='done').length;
       const rstat = dayRoutineStats(d);
-      if(!other){ totalMonthRoutine += rstat.total; totalMonthRoutineDone += rstat.done; }
+      if(!other){ totalMonthTasks += achievement.length; totalMonthDone += doneCount; totalMonthRoutine += rstat.total; totalMonthRoutineDone += rstat.done; }
       const hasDeadline = state.tasks.some(t=> t.deadline===d && t.status!=='done');
       const cellHtml = renderCalendarCellContent(d, 'month', true);
       return '<div class="month-cell '+(other?'other-month':'')+' '+(isToday?'today':'')+'" data-goto-date="'+d+'">'
         + '<div class="month-date"><span>'+dObj.getDate()+(hasDeadline?' 🔖':'')+'</span>'
+        + (achievement.length > 0 ? '<span class="month-heart-count">'+doneCount+'/'+achievement.length+'💖</span>' : '')
         + '</div>'
         + '<div class="month-items">'+cellHtml+'</div>'
         + '</div>';
@@ -2230,28 +1311,41 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
       + '<button class="btn small ghost" data-this-month="1">今月</button>'
       + '</div>'
       + calendarScopeBanner()
-      + '<div class="card"><div class="washi"></div><h2>🗓 月の予定（🔁 ルーティン '+totalMonthRoutineDone+'/'+totalMonthRoutine+'）</h2>'
+      + '<div class="card"><div class="washi"></div><h2>🗓 月の予定と達成状況（達成 '+totalMonthDone+'/'+totalMonthTasks+' 💖・🔁 '+totalMonthRoutineDone+'/'+totalMonthRoutine+'）</h2>'
       + calendarFilterControl('month')
       + '<div class="month-weekday-row">'+weekdayRow+'</div>'
       + '<div class="month-grid">'+cellsHtml+'</div></div>';
   }
 
     function renderTodoView(){
-    const backlog = state.tasks.filter(t=> t.assignedDate===null && t.status!=='done' && !t.routineId);
-    const scheduled = state.tasks.filter(t=> !t.routineId && (t.assignedDate!==null || state.events.some(e=>e.taskId===t.id)) && t.status!=='done');
-    const done = state.tasks.filter(t=> t.status==='done' && !t.routineId).sort((a,b)=> (b.actualEndTs||0)-(a.actualEndTs||0));
+    const allOpen=(state.tasks||[]).filter(t=> !t.routineId && t.status!=='done');
+    const today=todayStr();
+    const todayTasks=allOpen.filter(t=>taskIsTodayTask(t,today));
+    const urgent=allOpen.filter(t=>!taskIsTodayTask(t,today) && t.deadline && t.deadline<=today);
+    const other=allOpen.filter(t=>!taskIsTodayTask(t,today) && !(t.deadline && t.deadline<=today));
+    const doneToday=(state.tasks||[]).filter(t=>!t.routineId && t.status==='done' && t.actualEndTs && new Date(t.actualEndTs).toDateString()===new Date().toDateString())
+      .sort((a,b)=>(b.actualEndTs||0)-(a.actualEndTs||0));
 
     function col(title, list, opts){
       if(list.length===0) return '<div class="todo-col"><h3>'+title+'</h3><div class="empty">なにもないよ</div></div>';
-      return '<div class="todo-col"><h3>'+title+'</h3>'+list.map(t=>taskCardHTML(t,opts)).join('')+'</div>';
+      return '<div class="todo-col"><h3>'+title+' <span class="todo-count">'+list.length+'</span></h3>'+list.map(t=>taskCardHTML(t,opts)).join('')+'</div>';
     }
+
+    const doneHtml=doneToday.length
+      ? '<details class="day-task-done-details" style="margin-top:14px"><summary>🎉 今日完了したタスク '+doneToday.length+'件</summary>'
+        +'<div class="day-task-done-list">'+doneToday.map(t=>'<div class="day-task-done-row"><span>✓</span><span>'+escapeHtml(t.name)+'</span></div>').join('')+'</div></details>'
+      : '';
+
     return '<div class="card"><div class="washi"></div>'
-      + '<h2 style="font-family:\'Yomogi\',cursive; color:var(--pink-dark);">✅ ToDoリスト <button class="btn small" data-open-task-modal="1" data-default-date="" style="margin-left:auto;">＋ついか</button></h2>'
+      + '<div class="day-section-head"><h2 style="font-family:\'Yomogi\',cursive; color:var(--pink-dark);">✅ ToDoリスト</h2><button class="btn small" data-open-task-modal="1" data-default-date="">＋タスク</button></div>'
+      + '<div class="hint">タスクは「目的」。いつやるかの時間枠は予定として管理するよ🌷</div>'
       + '<div class="todo-cols">'
-      + col('🌤 予定してない', backlog, {showDate:false, showAssignBtn:true})
-      + col('📌 予定に追加した', scheduled, {showDate:true, showUnassign:true})
-      + col('💖 終わった', done, {showDate:true})
-      + '</div></div>';
+      + col('🌟 今日やる', todayTasks, {showDate:true})
+      + col('⚠️ 期限が近い・期限切れ', urgent, {showDate:false})
+      + col('📦 その他', other, {showDate:false})
+      + '</div>'
+      + doneHtml
+      + '</div>';
   }
 
 
@@ -2268,66 +1362,24 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
     return allMoney().filter(m=>{const d=m.date || todayStr(); return d>=range.start && d<=range.end;});
   }
   function sumMoney(list,type){ return list.filter(m=>m.type===type).reduce((a,m)=>a+Number(m.amount||0),0); }
-  function financeRange(){
-    const mode=state.financeRangeMode||'month';
-    const d=strToDate(state.viewDate||todayStr());
-    if(mode==='today'){
-      const t=state.viewDate||todayStr();
-      return {start:t,end:t,label:(t===todayStr()?'今日':t)};
-    }
-    if(mode==='week'){
-      const wr=periodRange('week',state.viewDate);
-      const tw=periodRange('week',todayStr());
-      const label=(wr.start===tw.start && wr.end===tw.end)
-        ? '今週'
-        : wr.start+' ～ '+wr.end;
-      return Object.assign(wr,{label});
-    }
-    if(mode==='month') return Object.assign(periodRange('month',state.viewDate),{label:formatMonthJP(state.viewDate)});
-    if(mode==='lastMonth'){
-      const p=dateToStr(new Date(d.getFullYear(),d.getMonth()-1,1));
-      return Object.assign(periodRange('month',p),{label:formatMonthJP(p)});
-    }
-    if(mode==='year'){
-      const y=d.getFullYear(); return {start:y+'-01-01',end:y+'-12-31',label:y+'年'};
-    }
-    const start=document.getElementById('financeStart')?.value || state.financeStart || state.viewDate;
-    const end=document.getElementById('financeEnd')?.value || state.financeEnd || state.viewDate;
-    return {start:start<=end?start:end,end:start<=end?end:start,label:(start<=end?start:end)+' ～ '+(start<=end?end:start)};
-  }
-  function financeCategoryStats(list,type){
-    const map={}; list.filter(m=>m.type===type).forEach(m=>{const c=(m.category||'その他').trim()||'その他'; map[c]=(map[c]||0)+Number(m.amount||0);});
-    const total=Object.values(map).reduce((a,b)=>a+b,0);
-    return Object.entries(map).sort((a,b)=>b[1]-a[1]).map(([category,amount])=>({category,amount,pct:total?Math.round(amount/total*100):0}));
-  }
-  function financeCategoryRows(stats,type){
-    if(!stats.length) return '<div class="empty">まだ'+(type==='expense'?'支出':'収入')+'がないよ。</div>';
-    return stats.map(x=>'<button class="money-category-row" data-finance-category="'+escapeHtml(x.category)+'"><span><b>'+escapeHtml(x.category)+'</b><small>'+x.pct+'%</small></span><span><b>'+x.amount.toLocaleString()+'円</b><span class="category-bar"><i style="width:'+x.pct+'%"></i></span></span></button>').join('');
-  }
   function renderFinanceView(){
-    const r=financeRange(), list=moneyForRange(r);
-    const income=sumMoney(list,'income'), expense=sumMoney(list,'expense'), net=income-expense;
-    const expenseStats=financeCategoryStats(list,'expense'), incomeStats=financeCategoryStats(list,'income');
-    const selected=state.financeCategory||'';
-    const filtered=selected?list.filter(m=>(m.category||'その他')===selected):list;
-    const tx=filtered.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-    const txHtml=tx.slice(0,100).map(m=>'<div class="money-row"><span>'+escapeHtml(m.date||'')+'・'+escapeHtml(m.taskName||'')+'<br><small>'+escapeHtml(m.category||'その他')+'</small></span><span style="display:flex;align-items:center;gap:6px;"><b style="color:'+(m.type==='expense'?'#C86A6A':'#6B8E5A')+'">'+(m.type==='expense'?'-':'+')+Number(m.amount||0).toLocaleString()+'円</b><button class="money-mini-btn" data-money-edit="'+m.taskId+'" data-money-owner="'+(m.ownerType||'task')+'" data-money-entry="'+m.id+'">✏️</button><button class="money-mini-btn" data-money-delete="'+m.taskId+'" data-money-owner="'+(m.ownerType||'task')+'" data-money-entry="'+m.id+'">×</button></span></div>').join('') || '<div class="empty">この期間には収支がないよ。</div>';
+    const month=periodRange('month',state.viewDate), week=periodRange('week',state.viewDate);
+    const mm=moneyForRange(month), wm=moneyForRange(week);
+    const monthIncome=sumMoney(mm,'income'), monthExpense=sumMoney(mm,'expense');
+    const weekIncome=sumMoney(wm,'income'), weekExpense=sumMoney(wm,'expense');
     const budgets=state.budgets||[];
     function budgetCard(b){
-      const br={start:b.start,end:b.end}, ex=sumMoney(moneyForRange(br).filter(m=>!b.category || m.category===b.category),'expense');
-      const pct=b.amount?Math.min(100,ex/b.amount*100):0, over=ex>b.amount;
-      return '<div class="money-summary"><div style="display:flex;justify-content:space-between;gap:8px;"><b>🎯 '+(b.period==='week'?'週':'月')+(b.category?'・'+escapeHtml(b.category):'・全体')+'</b><button class="btn small gray" data-budget-delete="'+b.id+'">🗑</button></div><div class="money-row"><span>'+escapeHtml(b.start)+' ～ '+escapeHtml(b.end)+'</span><b>'+ex.toLocaleString()+' / '+Number(b.amount).toLocaleString()+'円</b></div><div class="budget-bar"><div class="budget-fill '+(over?'over':'')+'" style="width:'+pct+'%"></div></div><div class="hint">'+(over?'予算オーバー💦':'残り '+Math.max(0,b.amount-ex).toLocaleString()+'円')+'</div></div>';
+      const r=periodRange(b.period,state.viewDate), ex=sumMoney(moneyForRange(r).filter(m=>!b.category || m.category===b.category),'expense');
+      const pct=b.amount?Math.min(100,ex/b.amount*100):0; const over=ex>b.amount;
+      return '<div class="money-summary"><div style="display:flex;justify-content:space-between;gap:8px;"><b>🎯 '+(b.period==='week'?'今週':'今月')+(b.category?'・'+escapeHtml(b.category):'・全体')+'</b><button class="btn small gray" data-budget-delete="'+b.id+'">🗑</button></div><div class="money-row"><span>使用</span><b>'+ex.toLocaleString()+' / '+Number(b.amount).toLocaleString()+'円</b></div><div class="budget-bar"><div class="budget-fill '+(over?'over':'')+'" style="width:'+pct+'%"></div></div><div class="hint">'+(over?'予算オーバー💦':'残り '+Math.max(0,b.amount-ex).toLocaleString()+'円')+'</div></div>';
     }
+    const tx=allMoney().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const txHtml=tx.slice(0,30).map(m=>'<div class="money-row"><span>'+escapeHtml(m.date||'')+'・'+escapeHtml(m.taskName||'')+'<br><small>'+escapeHtml(m.category||'その他')+'</small></span><span style="display:flex;align-items:center;gap:6px;"><b style="color:'+(m.type==='expense'?'#C86A6A':'#6B8E5A')+'">'+(m.type==='expense'?'-':'+')+Number(m.amount||0).toLocaleString()+'円</b><button class="money-mini-btn" data-money-edit="'+m.taskId+'" data-money-owner="'+(m.ownerType||'task')+'" data-money-entry="'+m.id+'">✏️</button><button class="money-mini-btn" data-money-delete="'+m.taskId+'" data-money-owner="'+(m.ownerType||'task')+'" data-money-entry="'+m.id+'">×</button></span></div>').join('') || '<div class="empty">まだ収支がないよ。出来事の💰から追加できるよ。</div>';
     return '<div class="day-nav"><div class="date-label">💰 お金</div><button class="btn small" data-open-budget="1" style="margin-left:auto;">🎯 予算を設定</button></div>'
-      + '<div class="finance-period"><div class="finance-period-buttons">'+['today','week','month','lastMonth','year'].map(x=>'<button class="btn small '+((state.financeRangeMode||'month')===x?'active':'ghost')+'" data-finance-range="'+x+'">'+({today:'今日',week:'今週',month:'今月',lastMonth:'先月',year:'今年'}[x])+'</button>').join('')+'<button class="btn small '+((state.financeRangeMode||'month')==='custom'?'active':'ghost')+'" data-finance-range="custom">期間指定</button></div>'
-      + '<div class="finance-period-nav"><button class="icon-btn" data-finance-shift="-1">◀</button><b>'+escapeHtml(r.label)+'</b><button class="icon-btn" data-finance-shift="1">▶</button></div>'
-      + ((state.financeRangeMode||'month')==='custom'?'<div class="finance-custom"><label>開始 <input type="date" id="financeStart" value="'+escapeHtml(state.financeStart||r.start)+'"></label><span>～</span><label>終了 <input type="date" id="financeEnd" value="'+escapeHtml(state.financeEnd||r.end)+'"></label></div>':'')+'</div>'
-      + '<div class="finance-grid"><div class="money-summary"><h2 style="margin-top:0">'+escapeHtml(r.label)+'の収支</h2><div class="money-big">'+(net>=0?'+':'')+net.toLocaleString()+'円</div><div class="money-row"><span>💰 収入</span><b style="color:#6B8E5A">+'+income.toLocaleString()+'円</b></div><div class="money-row"><span>💸 支出</span><b style="color:#C86A6A">-'+expense.toLocaleString()+'円</b></div></div>'
-      + '<div class="money-summary"><h2 style="margin-top:0">📊 記録数</h2><div class="money-big">'+list.length+'件</div><div class="money-row"><span>支出カテゴリ</span><b>'+expenseStats.length+'種類</b></div><div class="money-row"><span>収入カテゴリ</span><b>'+incomeStats.length+'種類</b></div></div></div>'
-      + '<div class="finance-grid"><div class="card"><div class="washi"></div><h2>💸 支出の内訳</h2>'+financeCategoryRows(expenseStats,'expense')+'</div><div class="card"><div class="washi"></div><h2>💰 収入の内訳</h2>'+financeCategoryRows(incomeStats,'income')+'</div></div>'
-      + (selected?'<div class="scope-banner">🔎 カテゴリ「'+escapeHtml(selected)+'」だけ表示中 <button class="btn small ghost" data-finance-category-clear="1">解除</button></div>':'')
+      + '<div class="finance-grid"><div class="money-summary"><h2 style="margin-top:0">📅 今月</h2><div class="money-big">'+(monthIncome-monthExpense).toLocaleString()+'円</div><div class="money-row"><span>収入</span><b style="color:#6B8E5A">+'+monthIncome.toLocaleString()+'円</b></div><div class="money-row"><span>支出</span><b style="color:#C86A6A">-'+monthExpense.toLocaleString()+'円</b></div></div>'
+      + '<div class="money-summary"><h2 style="margin-top:0">🗓 今週</h2><div class="money-big">'+(weekIncome-weekExpense).toLocaleString()+'円</div><div class="money-row"><span>収入</span><b style="color:#6B8E5A">+'+weekIncome.toLocaleString()+'円</b></div><div class="money-row"><span>支出</span><b style="color:#C86A6A">-'+weekExpense.toLocaleString()+'円</b></div></div></div>'
       + '<div class="card"><div class="washi"></div><h2>🎯 予算</h2><div class="finance-grid">'+(budgets.map(budgetCard).join('')||'<div class="empty">まだ予算がないよ。週・月ごとに設定できるよ。</div>')+'</div></div>'
-      + '<div class="card"><div class="washi"></div><h2>💳 '+(selected?'「'+escapeHtml(selected)+'」の明細':'明細')+'</h2>'+txHtml+(tx.length>100?'<div class="hint">表示は100件までだよ。</div>':'')+'</div>';
+      + '<div class="card"><div class="washi"></div><h2>💳 最近の収支</h2>'+txHtml+'</div>';
   }
   function openMoneyModal(id, moneyId, ownerType){
     const targetType=ownerType||'task';
@@ -2360,7 +1412,7 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
     const m=t.money[idx];
     if(!confirm('この'+(m.type==='expense'?'支出':'収入')+'を削除する？')) return;
     t.money.splice(idx,1);
-    requestSync();
+    await syncData();
     await notifyMoneyChange('削除した', t, m);
     render();
     showToast('お金の記録を削除したよ💰');
@@ -2383,7 +1435,6 @@ function routineInstanceForDate(r,dateStr){
         +'<button class="routine-done-btn '+(done?'done':'')+'" data-routine-done="'+escapeHtml(r.id)+'" data-routine-date="'+dateStr+'">'+(done?'✓':'')+'</button>'
         +'<span class="routine-today-name">'+escapeHtml(r.name)+'</span>'
         +(time?'<span class="routine-today-time">⏰ '+time+'</span>':'')
-        +'<button class="btn small gray routine-exclude-btn" data-routine-exclude="'+escapeHtml(r.id)+'" data-routine-date="'+dateStr+'">今日は対象外</button>'
         +'</div>';
     }).join('');
     return '<div class="routine-today-panel">'
@@ -2405,68 +1456,6 @@ function routineInstanceForDate(r,dateStr){
     }
     return {total,done,rate:total?Math.round(done/total*100):0};
   }
-  function addRoutineExcludedRange(routine,startDate,endDate){
-    if(!routine)return;
-    if(startDate>endDate){const t=startDate;startDate=endDate;endDate=t;}
-    if(!Array.isArray(routine.excludedDates)) routine.excludedDates=[];
-    const set=new Set(routine.excludedDates);
-    for(let d=startDate;;d=addDays(d,1)){
-      set.add(d);
-      state.tasks=state.tasks.filter(t=>!(isRoutineTask(t)&&t.routineId===routine.id&&t.assignedDate===d));
-      if(d===endDate)break;
-    }
-    routine.excludedDates=Array.from(set).sort();
-  }
-
-  function removeRoutineExcludedRange(routine,startDate,endDate){
-    if(!routine)return;
-    if(startDate>endDate){const t=startDate;startDate=endDate;endDate=t;}
-    const excluded=new Set(Array.isArray(routine.excludedDates)?routine.excludedDates:[]);
-    for(let d=startDate;;d=addDays(d,1)){
-      excluded.delete(d);
-      if(d===endDate)break;
-    }
-    routine.excludedDates=Array.from(excluded).sort();
-  }
-
-  function routineExcludedRanges(routine){
-    const dates=Array.from(new Set(Array.isArray(routine?.excludedDates)?routine.excludedDates:[])).sort();
-    const ranges=[];
-    dates.forEach(d=>{
-      const last=ranges[ranges.length-1];
-      if(last&&addDays(last.end,1)===d) last.end=d;
-      else ranges.push({start:d,end:d});
-    });
-    return ranges;
-  }
-
-  function openRoutineDateModal(id){
-    const r=state.routines.find(x=>x.id===id);
-    if(!r)return;
-    state.routineEditingId=id;
-    document.getElementById('routineDateModalTitle').textContent='📅 '+(r.name||'ルーティン')+' の実施日';
-    document.getElementById('routineDateStart').value=todayStr();
-    document.getElementById('routineDateEnd').value=todayStr();
-    document.getElementById('routineDateModal').classList.add('show');
-    renderRoutineExcludedRanges();
-  }
-
-  function closeRoutineDateModal(){
-    document.getElementById('routineDateModal').classList.remove('show');
-    state.routineEditingId=null;
-  }
-
-  function renderRoutineExcludedRanges(){
-    const host=document.getElementById('routineExcludedRanges');
-    if(!host)return;
-    const r=state.routines.find(x=>x.id===state.routineEditingId);
-    if(!r){host.innerHTML='';return;}
-    const ranges=routineExcludedRanges(r);
-    host.innerHTML=ranges.length
-      ? ranges.map((x,i)=>'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-bottom:1px dashed var(--pink);"><span>🚫 '+escapeHtml(x.start)+(x.end!==x.start?' ～ '+escapeHtml(x.end):'')+'</span><button class="btn small ghost" data-routine-excluded-remove="'+i+'">この期間を戻す</button></div>').join('')
-      : '<div class="empty">まだ「対象外」にした日はないよ。</div>';
-  }
-
 function renderRoutineView(){
     const today=todayStr();
     const list=state.routines;
@@ -2474,7 +1463,7 @@ function renderRoutineView(){
       '<div class="task-card"><div class="task-top"><div class="task-name">'+escapeHtml(r.name)+'</div><span class="badge '+typeBadgeClass(r.schedulingType)+'">ルーティン</span></div>'
       +'<div class="task-meta">⌛'+r.duration+'分'+(r.manualStart!=null?('・⏰'+minToTimeStr(r.manualStart)):'')+'</div>'
       +'<div class="task-actions"><label style="display:flex;align-items:center;gap:4px;font-size:11.5px;cursor:pointer;"><input type="checkbox" data-action="toggleRoutineActive" data-id="'+r.id+'" '+(r.active!==false?'checked':'')+'> 有効</label>'
-      +'<button class="btn small ghost" data-action="editRoutineDates" data-id="'+r.id+'">📅 実施日を編集</button><button class="btn small ghost" data-action="editRoutine" data-id="'+r.id+'">✏️編集</button><button class="btn small gray" data-action="deleteRoutine" data-id="'+r.id+'">🗑削除</button></div></div>').join('');
+      +'<button class="btn small ghost" data-action="editRoutine" data-id="'+r.id+'">✏️編集</button><button class="btn small gray" data-action="deleteRoutine" data-id="'+r.id+'">🗑削除</button></div></div>').join('');
     const ws=startOfWeek(today), we=addDays(ws,6), ds=dateToStr(new Date(strToDate(today).getFullYear(),strToDate(today).getMonth(),1)), de=dateToStr(new Date(strToDate(today).getFullYear(),strToDate(today).getMonth()+1,0));
     const stats=list.map(r=>{const d=routineRangeStats(r,today,today),w=routineRangeStats(r,ws,we),m=routineRangeStats(r,ds,de);return '<div class="routine-stat-card"><div class="routine-stat-head"><span>🔁 '+escapeHtml(r.name)+'</span><span>'+d.rate+'%</span></div><div class="routine-stat-sub">今日 '+d.done+'/'+d.total+'回 ・ 今週 '+w.done+'/'+w.total+'回 ・ 今月 '+m.done+'/'+m.total+'回</div><div class="routine-bar"><span style="width:'+d.rate+'%"></span></div></div>';}).join('');
     return '<div class="card"><div class="washi"></div><h2>🔁 ルーティン管理 <button class="btn small" data-open-routine-modal="1" style="margin-left:auto;">＋ついか</button></h2>'
@@ -2706,7 +1695,7 @@ function renderRoutineView(){
     }else{
       state.events.push({id:uid(),name,date,startMin,endMin,memo,taskId,status:'planned',actualStartTs:null,actualEndTs:null,money:[],shared,origin,plannedDate:origin==='planned'?date:null,plannedStartMin:origin==='planned'?startMin:null,plannedEndMin:origin==='planned'?endMin:null,actualDate:origin==='spontaneous'?date:null,actualStartMin:origin==='spontaneous'?startMin:null,actualEndMin:origin==='spontaneous'?endMin:null});
     }
-    closeEventModal(); requestSync(); render(); showToast(origin==='spontaneous'?'記録を保存したよ💾':'予定を保存したよ💾');
+    closeEventModal(); await syncData(); render(); showToast(origin==='spontaneous'?'記録を保存したよ💾':'予定を保存したよ💾');
   });
 
   /* ================= task modal ================= */
@@ -2751,7 +1740,7 @@ function renderRoutineView(){
       if(parentChanged) t.treeOrder = nextTreeOrder(projectId, parentTaskId);
     }
     else state.tasks.push({id:uid(),name,duration,schedulingType:'flexible',kind:'task',memo,money:[],assignedDate:null,deadline:deadline||null,routineId:null,status:'planned',progress:0,scheduledStart:null,scheduledEnd:null,plannedStart:null,plannedEnd:null,actualStartTs:null,actualEndTs:null,pausedAt:null,totalPausedMs:0,order:Date.now()+Math.random(),pushedFromDate:null,notifiedStart:false,notifiedEnd:false,projectId,parentTaskId,treeOrder:nextTreeOrder(projectId,parentTaskId)});
-    document.getElementById('taskModal').classList.remove('show'); requestSync(); render(); showToast('タスクを保存したよ💾');
+    document.getElementById('taskModal').classList.remove('show'); await syncData(); render(); showToast('タスクを保存したよ💾');
   });
 
   /* ================= project modal ================= */
@@ -2774,7 +1763,7 @@ function renderRoutineView(){
     } else {
       state.projects.push({id:uid(),name,memo,createdAt:Date.now()});
     }
-    document.getElementById('projectModal').classList.remove('show'); requestSync(); render(); showToast('プロジェクトを保存したよ💾');
+    document.getElementById('projectModal').classList.remove('show'); await syncData(); render(); showToast('プロジェクトを保存したよ💾');
   });
 
   /* ================= past event shortcut ================= */
@@ -2811,7 +1800,7 @@ function renderRoutineView(){
       state.routines.push({ id: uid(), name, duration, schedulingType: type, manualStart, active: true, excludedDates: [] });
     }
     document.getElementById('routineModal').classList.remove('show');
-    requestSync();
+    await syncData();
     render();
     showToast('ルーティンをほぞんしたよ💾');
   });
@@ -2820,8 +1809,8 @@ function renderRoutineView(){
   async function handleEventAction(action,id){
     const e=state.events.find(x=>x.id===id); if(!e)return;
     if(action==='edit'){openEventModal('edit',e);return;} if(action==='actual'){openActualPrompt(e);return;}
-    if(action==='delete'){if(!confirm('この予定を削除する？'))return; state.events=state.events.filter(x=>x.id!==id); requestSync(); render(); return;}
-    if(action==='progress' || action==='done'){const t=state.tasks.find(x=>x.id===e.taskId); if(!t)return; if(action==='done'){t.status='done'; t.actualEndTs=t.actualEndTs||Date.now(); t.progress=100; e.status='done'; e.actualEndTs=e.actualEndTs||Date.now();} else {const v=prompt('タスクの進捗度（0〜100）',String(Number(t.progress||0))); if(v===null)return; const n=Math.max(0,Math.min(100,Number(v))); if(!Number.isFinite(n))return; t.progress=n; if(n>=100){t.progress=100;t.status='done';e.status='done';} else {e.status='planned';}} requestSync(); render();}
+    if(action==='delete'){if(!confirm('この予定を削除する？'))return; state.events=state.events.filter(x=>x.id!==id); await syncData(); render(); return;}
+    if(action==='progress' || action==='done'){const t=state.tasks.find(x=>x.id===e.taskId); if(!t)return; if(action==='done'){t.status='done'; t.actualEndTs=t.actualEndTs||Date.now(); t.progress=100; e.status='done'; e.actualEndTs=e.actualEndTs||Date.now();} else {const v=prompt('タスクの進捗度（0〜100）',String(Number(t.progress||0))); if(v===null)return; const n=Math.max(0,Math.min(100,Number(v))); if(!Number.isFinite(n))return; t.progress=n; if(n>=100){t.progress=100;t.status='done';e.status='done';} else {e.status='planned';}} await syncData(); render();}
   }
 
   
@@ -2872,31 +1861,17 @@ function renderRoutineStatsPanel(){
     if(action==='toggleRoutineActive'){
       const r = state.routines.find(x=>x.id===id);
       if(r){
-        const wasActive = r.active !== false;
-        if(wasActive){
-          r.active = false;
-          r.disabledFrom = todayStr();
-        }else{
-          const from = r.disabledFrom || todayStr();
-          const yesterday = addDays(todayStr(),-1);
-          if(from<=yesterday) addRoutineExcludedRange(r,from,yesterday);
-          r.disabledFrom = null;
-          r.active = true;
-        }
-        requestSync();
+        r.active = !r.active;
+        await syncData();
         render();
       }
-      return;
-    }
-    if(action==='editRoutineDates'){
-      openRoutineDateModal(id);
       return;
     }
 
     if(action==='deleteRoutine'){
       if(!confirm('このルーティンを削除する？（過去の記録は残るよ）')) return;
       state.routines = state.routines.filter(x=>x.id!==id);
-      requestSync();
+      await syncData();
       render();
       return;
     }
@@ -2951,7 +1926,7 @@ function renderRoutineStatsPanel(){
       state.tasks.forEach(x=>{ if(x.projectId===id) x.projectId=null; });
       state.projects = state.projects.filter(x=>x.id!==id);
       if(state.calendarScope && state.calendarScope.type==='project' && state.calendarScope.id===id) state.calendarScope=null;
-      requestSync();
+      await syncData();
       render();
       return;
     }
@@ -2965,7 +1940,7 @@ function renderRoutineStatsPanel(){
         if(swapIdx>=0 && swapIdx<siblings.length){
           const other = siblings[swapIdx];
           const tmp = Number(t.treeOrder||0); t.treeOrder = Number(other.treeOrder||0); other.treeOrder = tmp;
-          requestSync();
+          await syncData();
         }
       }
       render();
@@ -3085,7 +2060,7 @@ function renderRoutineStatsPanel(){
         break;
     }
 
-    requestSync();
+    await syncData();
     render();
   }
 
@@ -3142,11 +2117,11 @@ function renderRoutineStatsPanel(){
       if(!m){showToast('その収支が見つからないよ');return;}
       m.type=type; m.amount=amount; m.category=category; m.date=date;
       const changed=Object.assign({},m);
-      closeMoneyModal(); requestSync(); await notifyMoneyChange('変更した',t,changed); render(); showToast('お金の記録を変更したよ💰');
+      closeMoneyModal(); await syncData(); await notifyMoneyChange('変更した',t,changed); render(); showToast('お金の記録を変更したよ💰');
     }else{
       const m={id:uid(),type,amount,category,date};
       t.money.push(m);
-      closeMoneyModal(); requestSync(); await notifyMoneyChange('記録した',t,m); render(); showToast('お金の記録を追加したよ💰');
+      closeMoneyModal(); await syncData(); await notifyMoneyChange('記録した',t,m); render(); showToast('お金の記録を追加したよ💰');
     }
   });
   document.getElementById('budgetCancel').addEventListener('click',()=>document.getElementById('budgetModal').classList.remove('show'));
@@ -3155,16 +2130,10 @@ function renderRoutineStatsPanel(){
     const period=document.querySelector('input[name=budgetPeriod]:checked').value; const r=periodRange(period,state.viewDate);
     const category=document.getElementById('budgetCategory').value.trim();
     state.budgets.push({id:uid(),period,start:r.start,end:r.end,category,amount});
-    document.getElementById('budgetModal').classList.remove('show'); requestSync(); render(); showToast('予算を設定したよ🎯');
+    document.getElementById('budgetModal').classList.remove('show'); await syncData(); render(); showToast('予算を設定したよ🎯');
   });
 
   /* ================= global click / change delegation ================= */
-  document.addEventListener('input', function(e){
-    if(e.target && e.target.id==='dayMemo'){
-      saveDayMemo(state.viewDate, e.target.value);
-    }
-  });
-
   document.addEventListener('change', function(e){
     const filter = e.target.closest('.calendar-filter');
     if(filter){
@@ -3174,11 +2143,6 @@ function renderRoutineStatsPanel(){
         saveCalendarFilters();
         render();
       }
-    }
-    if(e.target.id==='financeStart' || e.target.id==='financeEnd'){
-      state.financeStart=document.getElementById('financeStart')?.value||state.financeStart;
-      state.financeEnd=document.getElementById('financeEnd')?.value||state.financeEnd;
-      state.financeRangeMode='custom'; render(); return;
     }
   });
 
@@ -3204,17 +2168,24 @@ function renderRoutineStatsPanel(){
     const openTaskBtn = e.target.closest('[data-open-task-modal]');
     if(openTaskBtn){ openTaskModal('create', null, {date: openTaskBtn.dataset.defaultDate || ''}); return; }
 
-    const routineExcludeBtn=e.target.closest('[data-routine-exclude]');
-    if(routineExcludeBtn){
-      const r=state.routines.find(x=>x.id===routineExcludeBtn.dataset.routineExclude), d=routineExcludeBtn.dataset.routineDate||todayStr();
-      if(r){
-        if(!Array.isArray(r.excludedDates)) r.excludedDates=[];
-        if(!r.excludedDates.includes(d)){
-          r.excludedDates.push(d);
-          r.excludedDates.sort();
-          const inst=state.tasks.find(t=>isRoutineTask(t) && t.routineId===r.id && t.assignedDate===d);
-          if(inst) state.tasks=state.tasks.filter(t=>t!==inst);
-          requestSync(); render(); showToast('この日のルーティンを対象外にしたよ🗓️');
+    const dayTaskDoneBtn=e.target.closest('[data-day-task-done]');
+    if(dayTaskDoneBtn){
+      const t=state.tasks.find(x=>x.id===dayTaskDoneBtn.dataset.dayTaskDone);
+      if(t){ t.status='done'; t.progress=100; t.actualEndTs=t.actualEndTs||Date.now(); await syncData(); render(); showToast('タスク完了！おつかれさま💖'); }
+      return;
+    }
+    const rescheduleBtn=e.target.closest('[data-reschedule]');
+    if(rescheduleBtn){
+      const ev=state.events.find(x=>x.id===rescheduleBtn.dataset.id);
+      if(ev){
+        const mode=rescheduleBtn.dataset.reschedule;
+        if(mode==='tomorrow'){
+          const next=addDays(ev.date,1); ev.date=next; ev.plannedDate=next; ev.status='planned'; ev.rescheduleDismissed=false;
+          await syncData(); render(); showToast('明日の予定に回したよ🌙');
+        }else if(mode==='edit'){
+          openEventModal('edit',ev);
+        }else if(mode==='dismiss'){
+          ev.rescheduleDismissed=true; await syncData(); render(); showToast('今回は予定なしにしたよ');
         }
       }
       return;
@@ -3223,7 +2194,7 @@ function renderRoutineStatsPanel(){
     const routineDoneBtn=e.target.closest('[data-routine-done]');
     if(routineDoneBtn){
       const r=state.routines.find(x=>x.id===routineDoneBtn.dataset.routineDone), d=routineDoneBtn.dataset.routineDate||todayStr();
-      if(r){const inst=routineInstanceForDate(r,d); if(inst){const done=routineDone(inst); inst.status=done?'planned':'done'; inst.completed=!done; inst.progress=done?0:100; if(!done){inst.actualStartTs=inst.actualStartTs||Date.now();inst.actualEndTs=Date.now();}else{inst.actualEndTs=null;} requestSync(); render(); showToast(done?'ルーティンを未達に戻したよ':'ルーティン達成！💖');}}
+      if(r){const inst=routineInstanceForDate(r,d); if(inst){const done=routineDone(inst); inst.status=done?'planned':'done'; inst.completed=!done; inst.progress=done?0:100; if(!done){inst.actualStartTs=inst.actualStartTs||Date.now();inst.actualEndTs=Date.now();}else{inst.actualEndTs=null;} await syncData(); render(); showToast(done?'ルーティンを未達に戻したよ':'ルーティン達成！💖');}}
       return;
     }
 
@@ -3241,28 +2212,6 @@ function renderRoutineStatsPanel(){
     const eventProgress=e.target.closest('[data-event-task-progress]'); if(eventProgress){e.stopPropagation();handleEventAction('progress',eventProgress.dataset.eventTaskProgress);return;}
     const eventDone=e.target.closest('[data-event-task-done]'); if(eventDone){e.stopPropagation();handleEventAction('done',eventDone.dataset.eventTaskDone);return;}
     const eventMoney=e.target.closest('[data-money-open-type]'); if(eventMoney){e.stopPropagation();openMoneyModal(eventMoney.dataset.moneyOpen,'', 'event');return;}
-    const financeRangeBtn=e.target.closest('[data-finance-range]');
-    if(financeRangeBtn){
-      state.financeRangeMode=financeRangeBtn.dataset.financeRange;
-      state.financeCategory='';
-      if(state.financeRangeMode==='custom'){ state.financeStart=state.financeStart||state.viewDate; state.financeEnd=state.financeEnd||state.viewDate; }
-      render(); return;
-    }
-    const financeShift=e.target.closest('[data-finance-shift]');
-    if(financeShift){
-      const n=parseInt(financeShift.dataset.financeShift,10), mode=state.financeRangeMode||'month';
-      if(mode==='custom'){
-        state.financeStart=addDays(state.financeStart||state.viewDate,n*30); state.financeEnd=addDays(state.financeEnd||state.viewDate,n*30);
-      }else if(mode==='week') state.viewDate=addDays(state.viewDate,n*7);
-      else if(mode==='month'||mode==='lastMonth') state.viewDate=shiftMonth(state.viewDate,n);
-      else if(mode==='year'){ const d=strToDate(state.viewDate); d.setFullYear(d.getFullYear()+n); state.viewDate=dateToStr(d); }
-      else state.viewDate=addDays(state.viewDate,n);
-      render(); return;
-    }
-    const financeCat=e.target.closest('[data-finance-category]');
-    if(financeCat){state.financeCategory=financeCat.dataset.financeCategory||'';render();return;}
-    const financeCatClear=e.target.closest('[data-finance-category-clear]');
-    if(financeCatClear){state.financeCategory='';render();return;}
     const openBudgetBtn = e.target.closest('[data-open-budget]');
     if(openBudgetBtn){ document.getElementById('budgetAmount').value=''; document.getElementById('budgetCategory').value=''; document.getElementById('budgetModal').classList.add('show'); return; }
     const delBudgetBtn = e.target.closest('[data-budget-delete]');
@@ -3282,37 +2231,7 @@ function renderRoutineStatsPanel(){
     if(e.target && e.target.id==='dayDatePicker'){ state.viewDate = e.target.value; render(); }
   });
 
-
-  document.getElementById('routineDateClose').addEventListener('click',closeRoutineDateModal);
-  document.getElementById('routineDateModal').addEventListener('click',e=>{if(e.target.id==='routineDateModal')closeRoutineDateModal();});
-  document.getElementById('routineDateExclude').addEventListener('click',()=>{
-    const r=state.routines.find(x=>x.id===state.routineEditingId);
-    const start=document.getElementById('routineDateStart').value;
-    const end=document.getElementById('routineDateEnd').value;
-    if(!r||!start||!end){showToast('開始日と終了日を入れてね');return;}
-    addRoutineExcludedRange(r,start,end);
-    requestSync();
-    render();
-    renderRoutineExcludedRanges();
-    showToast('この期間を対象外にしたよ。あとから戻せるよ📅');
-  });
-  document.getElementById('routineExcludedRanges').addEventListener('click',e=>{
-    const b=e.target.closest('[data-routine-excluded-remove]');
-    if(!b)return;
-    const r=state.routines.find(x=>x.id===state.routineEditingId);
-    if(!r)return;
-    const ranges=routineExcludedRanges(r);
-    const range=ranges[Number(b.dataset.routineExcludedRemove)];
-    if(!range)return;
-    removeRoutineExcludedRange(r,range.start,range.end);
-    requestSync();
-    render();
-    renderRoutineExcludedRanges();
-    showToast('対象外を戻したよ。');
-  });
-
-  /* ================= theme system ================= */
-  const THEME_DEFS = [
+const THEME_DEFS = [
     {id:'heisei',name:'🌸 平成女児',desc:'今までのLiflow。デコ・紙もの・ふわふわ。',swatch:'linear-gradient(135deg,#FFC7DE,#E3D6FF 55%,#BFEAF9)'},
     {id:'night',name:'🌙 夜空',desc:'深い夜色＋星の粒。静かに集中。',swatch:'linear-gradient(135deg,#0B1028,#353A70,#6E83E8)'},
     {id:'minimal',name:'◻️ ミニマル',desc:'装飾をほぼなくして情報を優先。',swatch:'linear-gradient(135deg,#fff,#D6DADF)'},
@@ -3347,6 +2266,9 @@ function renderRoutineStatsPanel(){
     e.target.value='';
   });
 
+
+  applyTheme(state.theme);
+
   /* ================= settings modal ================= */
   const settingsModal = document.getElementById('settingsModal');
   function openSettingsModal(){
@@ -3367,7 +2289,7 @@ function renderRoutineStatsPanel(){
     state.settings.defaultShareStandalone = document.getElementById('setDefaultShareStandalone').checked;
     state.settings.defaultShareTask = document.getElementById('setDefaultShareTask').checked;
     settingsModal.classList.remove('show');
-    requestSync();
+    await syncData();
     render();
     showToast('せっていをほぞんしたよ💾');
   });
@@ -3380,7 +2302,6 @@ function renderRoutineStatsPanel(){
 
   /* ================= init ================= */
   state.viewDate = todayStr();
-  applyTheme(state.theme);
   setInterval(()=>{ 
     checkTimeNotifications();
     if(state.currentView==='day' || state.currentView==='todo') render(); 
