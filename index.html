@@ -6,6 +6,7 @@
 <title>Liflow — 時間と出来事の記録</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Yomogi&family=M+PLUS+Rounded+1c:wght@400;500;700;800&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --pink:#FFC7DE;
@@ -574,12 +575,23 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
       <div class="field"><label>1日のおわり</label><input type="time" id="setDayEnd"></div>
     </div>
     <div class="field">
-      <label>共有カレンダー</label>
-      <div class="hint">予定を作るたびに選ばなくてもいいように、種類ごとの初期値を決めておけるよ。予定ごとの変更もできます。</div>
+      <label>外部カレンダー同期</label>
+      <div class="hint">ONにした予定をGoogleカレンダーへ同期します。Googleカレンダーをスマホの標準カレンダー経由でTimeTreeに表示できます。</div>
       <div class="row2" style="margin-top:8px;">
-        <label style="font-size:12px;"><input type="checkbox" id="setDefaultShareStandalone"> 普通の予定は共有する</label>
-        <label style="font-size:12px;"><input type="checkbox" id="setDefaultShareTask"> タスクから作る予定も共有する</label>
+        <label style="font-size:12px;"><input type="checkbox" id="setDefaultShareStandalone"> 普通の予定は外部同期する</label>
+        <label style="font-size:12px;"><input type="checkbox" id="setDefaultShareTask"> タスクから作る予定も外部同期する</label>
       </div>
+    </div>
+    <div class="field">
+      <label>Googleカレンダー</label>
+      <div id="googleSyncStatus" class="hint">未接続</div>
+      <input type="text" id="setGoogleClientId" placeholder="Google OAuth クライアントID（Web）">
+      <input type="text" id="setGoogleCalendarId" placeholder="カレンダーID（空欄なら primary）" style="margin-top:7px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <button class="btn blue" id="connectGoogleCalendar">Googleカレンダーを接続</button>
+        <button class="btn ghost" id="testGoogleCalendar">同期テスト</button>
+      </div>
+      <div class="hint">クライアントIDは秘密鍵ではないのでHTMLに入れても大丈夫。ただしGoogle Cloud側で、このLiflowの公開URLを承認済みJavaScript生成元に登録する必要があります。</div>
     </div>
     <div class="field">
       <label>Discord Webhook URL</label>
@@ -633,8 +645,8 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
     </div>
     <div class="field"><label>一言メモ（任意）</label><textarea id="emMemo" rows="2" placeholder="実際にしたこと、気づいたことなど"></textarea></div>
     <div class="field" style="margin-top:4px;">
-      <label style="font-size:12px;"><input type="checkbox" id="emShared"> 📤 共有カレンダーに追加</label>
-      <div class="hint">TimeTreeなどの共有用カレンダーへ出したい予定だけONにできるよ。</div>
+      <label style="font-size:12px;"><input type="checkbox" id="emShared"> 📤 外部カレンダーに同期</label>
+      <div class="hint">Googleカレンダーへ同期して、TimeTreeなどから表示したい予定だけONにできるよ。</div>
     </div>
     <div class="hint" id="emTaskHint">タスクに紐づけると、この予定から進捗更新や完了処理ができるよ。</div>
     <div class="modal-actions">
@@ -809,9 +821,9 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
   function loadLocalSettings(){
     try{
       const s = JSON.parse(localStorage.getItem(LS_SETTINGS));
-      if(s) return Object.assign({dayStart:'08:00', dayEnd:'22:00', webhook:'', defaultShareStandalone:true, defaultShareTask:false, dayMemos:{}}, s);
+      if(s) return Object.assign({dayStart:'08:00', dayEnd:'22:00', webhook:'', defaultShareStandalone:true, defaultShareTask:false, dayMemos:{}, googleClientId:'', googleCalendarId:'primary'}, s);
     }catch(e){}
-    return {dayStart:'08:00', dayEnd:'22:00', webhook:'', defaultShareStandalone:true, defaultShareTask:false, dayMemos:{}};
+    return {dayStart:'08:00', dayEnd:'22:00', webhook:'', defaultShareStandalone:true, defaultShareTask:false, dayMemos:{}, googleClientId:'', googleCalendarId:'primary'};
   }
   function saveLocalSettings(){ localStorage.setItem(LS_SETTINGS, JSON.stringify(state.settings)); }
   function loadLocalBudgets(){ try{ return JSON.parse(localStorage.getItem(LS_BUDGETS)) || []; }catch(e){ return []; } }
@@ -1013,6 +1025,130 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
     theme: loadTheme()
   };
 
+  /* ================= Google Calendar external sync ================= */
+  let googleTokenClient = null;
+  let googleAccessToken = null;
+  let googleTokenExpiresAt = 0;
+  let googleConnecting = false;
+  const GOOGLE_CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+
+  function googleStatusText(){
+    const el=document.getElementById('googleSyncStatus');
+    if(!el) return;
+    if(googleConnecting) el.textContent='接続処理中…';
+    else if(googleAccessToken && Date.now()<googleTokenExpiresAt-30000) el.textContent='✓ 接続済み（このブラウザで有効）';
+    else if(state.settings.googleClientId) el.textContent='未接続（接続ボタンを押してね）';
+    else el.textContent='未設定';
+  }
+
+  function initGoogleTokenClient(promptMode){
+    if(!state.settings.googleClientId){ showToast('Google OAuth クライアントIDを設定してね'); return null; }
+    if(!window.google || !window.google.accounts || !window.google.accounts.oauth2){ showToast('Googleの認証機能の読み込み待ちです。少し待ってから試してね'); return null; }
+    googleTokenClient=window.google.accounts.oauth2.initTokenClient({
+      client_id:state.settings.googleClientId.trim(),
+      scope:GOOGLE_CALENDAR_SCOPE,
+      callback:(response)=>{
+        googleConnecting=false;
+        if(response && response.error){ console.error('Google OAuth error',response); googleAccessToken=null; googleTokenExpiresAt=0; googleStatusText(); showToast('Googleカレンダー接続に失敗したよ'); return; }
+        googleAccessToken=response.access_token;
+        googleTokenExpiresAt=Date.now()+Number(response.expires_in||3600)*1000;
+        googleStatusText();
+        showToast('Googleカレンダーに接続したよ☁️');
+      }
+    });
+    googleConnecting=true; googleStatusText();
+    googleTokenClient.requestAccessToken({prompt:promptMode||''});
+    return googleTokenClient;
+  }
+
+  function getGoogleToken(){
+    return new Promise((resolve,reject)=>{
+      if(googleAccessToken && Date.now()<googleTokenExpiresAt-30000){ resolve(googleAccessToken); return; }
+      if(!state.settings.googleClientId){ reject(new Error('Google OAuth クライアントIDが未設定')); return; }
+      if(!window.google?.accounts?.oauth2){ reject(new Error('Google Identity Servicesが読み込まれていません')); return; }
+      googleTokenClient=window.google.accounts.oauth2.initTokenClient({
+        client_id:state.settings.googleClientId.trim(), scope:GOOGLE_CALENDAR_SCOPE,
+        callback:(response)=>{
+          googleConnecting=false; googleStatusText();
+          if(response && response.error){ googleAccessToken=null; googleTokenExpiresAt=0; reject(new Error(response.error_description||response.error)); return; }
+          googleAccessToken=response.access_token; googleTokenExpiresAt=Date.now()+Number(response.expires_in||3600)*1000; resolve(googleAccessToken);
+        }
+      });
+      googleConnecting=true; googleStatusText();
+      googleTokenClient.requestAccessToken({prompt:''});
+    });
+  }
+
+  async function googleApi(path, options={}){
+    let token=await getGoogleToken();
+    const doFetch=()=>fetch('https://www.googleapis.com/calendar/v3'+path,Object.assign({headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'}},options));
+    let res=await doFetch();
+    if(res.status===401){ googleAccessToken=null; googleTokenExpiresAt=0; token=await getGoogleToken(); res=await doFetch(); }
+    if(!res.ok){ let body=''; try{body=await res.text();}catch(e){} throw new Error('Google Calendar API '+res.status+' '+body.slice(0,300)); }
+    if(res.status===204) return null;
+    return res.json();
+  }
+
+  function googleEventIdFor(e){
+    const base=String(e.id||'event').toLowerCase().replace(/[^a-z0-9_-]/g,'');
+    return ('lf_'+base).slice(0,1024);
+  }
+
+  function googlePayloadFromLiflow(e){
+    return {
+      id:googleEventIdFor(e),
+      summary:e.name||'Liflowの予定',
+      description:[e.memo||'',e.taskId?'Liflowのタスクに紐づく予定':''].filter(Boolean).join('\n'),
+      start:{dateTime:new Date(e.date+'T'+minToTimeStr(e.startMin)+':00+09:00').toISOString(),timeZone:'Asia/Tokyo'},
+      end:{dateTime:new Date(e.date+'T'+minToTimeStr(e.endMin)+':00+09:00').toISOString(),timeZone:'Asia/Tokyo'}
+    };
+  }
+
+  async function syncEventToGoogleCalendar(e){
+    if(!e) return;
+    if(!e.shared && !e.externalSync) return;
+    if(!state.settings.googleClientId) return;
+    const calendarId=encodeURIComponent(state.settings.googleCalendarId||'primary');
+    const payload=googlePayloadFromLiflow(e);
+    const eventId=e.googleEventId||payload.id;
+    try{
+      const result=await googleApi('/calendars/'+calendarId+'/events/'+encodeURIComponent(eventId),{method:'PUT',body:JSON.stringify(payload)});
+      e.googleEventId=result.id||eventId;
+      e.googleCalendarId=state.settings.googleCalendarId||'primary';
+      e.externalSync=true; e.shared=true;
+      requestSync();
+    }catch(err){
+      // 404はまだGoogle側にないのでinsertへ
+      if(String(err.message||'').includes(' 404 ')){
+        try{
+          const result=await googleApi('/calendars/'+calendarId+'/events',{method:'POST',body:JSON.stringify(payload)});
+          e.googleEventId=result.id||eventId; e.googleCalendarId=state.settings.googleCalendarId||'primary'; e.externalSync=true; e.shared=true; requestSync();
+          showToast('Googleカレンダーに同期したよ☁️');
+          return;
+        }catch(err2){ console.error(err2); showToast('Googleカレンダー同期に失敗したよ'); return; }
+      }
+      console.error(err); showToast('Googleカレンダー同期に失敗したよ');
+    }
+  }
+
+  async function removeEventFromGoogle(e){
+    if(!e || !e.googleEventId || !e.googleCalendarId || !state.settings.googleClientId) return;
+    try{
+      await googleApi('/calendars/'+encodeURIComponent(e.googleCalendarId)+'/events/'+encodeURIComponent(e.googleEventId),{method:'DELETE'});
+    }catch(err){ if(!String(err.message||'').includes(' 404 ')) console.error(err); }
+    e.googleEventId=null; e.googleCalendarId=null; e.externalSync=false;
+  }
+
+  async function syncAllExternalEvents(){
+    const targets=state.events.filter(e=>e.shared===true || e.externalSync===true);
+    if(!targets.length){ showToast('外部同期対象の予定はないよ'); return; }
+    let ok=0;
+    for(const e of targets){ await syncEventToGoogleCalendar(e); ok++; }
+    showToast(ok+'件をGoogleカレンダーと同期したよ☁️');
+  }
+
+  googleStatusText();
+
   function getDayMemo(dateStr){
     if(!state.settings.dayMemos || typeof state.settings.dayMemos!=='object') state.settings.dayMemos={};
     return state.settings.dayMemos[dateStr] || '';
@@ -1043,7 +1179,7 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
       const endMin = t.scheduledEnd!=null ? t.scheduledEnd : (t.plannedEnd!=null ? t.plannedEnd : startMin+(t.duration||0));
       return {
         id:uid(), name:t.name||'', date:t.assignedDate, startMin, endMin, memo:t.memo||'', taskId:t.id,
-        money:Array.isArray(t.money)?t.money:[], shared:false, origin:'planned',
+        money:Array.isArray(t.money)?t.money:[], shared:false, externalSync:false, googleCalendarId:null, googleEventId:null, origin:'planned',
         plannedDate:t.assignedDate, plannedStartMin:startMin, plannedEndMin:endMin,
         actualDate:null, actualStartMin:null, actualEndMin:null,
         status:t.status==='done'?'done':'planned', actualStartTs:t.actualStartTs||null, actualEndTs:t.actualEndTs||null
@@ -1052,12 +1188,15 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
     const migratedTaskIds = new Set(migratedEvents.map(e=>e.taskId));
     const seen=new Set(rawEvents.map(e=>e.id));
     const evs=rawEvents.map(e=>{
-      const x=Object.assign({memo:'',money:[],taskId:null,status:'planned',startMin:null,endMin:null,shared:false},e);
+      const x=Object.assign({memo:'',money:[],taskId:null,status:'planned',startMin:null,endMin:null,shared:false,externalSync:false,googleCalendarId:null,googleEventId:null},e);
       if(x.origin!=='spontaneous') x.origin='planned';
       if(x.plannedDate==null) x.plannedDate=x.date||null;
       if(x.plannedStartMin==null) x.plannedStartMin=x.startMin;
       if(x.plannedEndMin==null) x.plannedEndMin=x.endMin;
       if(x.actualDate==null && (x.actualStartMin!=null || x.actualEndMin!=null)) x.actualDate=x.date||null;
+      if(x.externalSync==null) x.externalSync=x.shared===true;
+      if(x.googleCalendarId==null) x.googleCalendarId=null;
+      if(x.googleEventId==null) x.googleEventId=null;
       return x;
     });
     migratedEvents.forEach(e=>{if(!seen.has(e.id)) evs.push(e);});
@@ -1083,7 +1222,7 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
       if(!hasExplicitTime || state.events.some(e=>e.taskId===t.id)) return true;
       const startMin = t.manualStart!=null ? t.manualStart : (t.plannedStart!=null ? t.plannedStart : t.scheduledStart);
       const endMin = t.scheduledEnd!=null ? t.scheduledEnd : (t.plannedEnd!=null ? t.plannedEnd : startMin+(t.duration||0));
-      migrated.push({id:uid(),name:t.name,date:t.assignedDate,startMin,endMin,memo:t.memo||'',taskId:t.id,status:t.status==='done'?'done':'planned',origin:'planned',plannedDate:t.assignedDate,plannedStartMin:startMin,plannedEndMin:endMin,actualDate:null,actualStartMin:null,actualEndMin:null,actualStartTs:t.actualStartTs||null,actualEndTs:t.actualEndTs||null,money:Array.isArray(t.money)?t.money:[],shared:false});
+      migrated.push({id:uid(),name:t.name,date:t.assignedDate,startMin,endMin,memo:t.memo||'',taskId:t.id,status:t.status==='done'?'done':'planned',origin:'planned',plannedDate:t.assignedDate,plannedStartMin:startMin,plannedEndMin:endMin,actualDate:null,actualStartMin:null,actualEndMin:null,actualStartTs:t.actualStartTs||null,actualEndTs:t.actualEndTs||null,money:Array.isArray(t.money)?t.money:[],shared:false,externalSync:false,googleCalendarId:null,googleEventId:null});
       return true;
     });
     if(migrated.length){
@@ -1197,7 +1336,7 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
       events:Array.isArray(source&&source.events)?source.events:[],
       routines:Array.isArray(source&&source.routines)?source.routines:[],
       projects:Array.isArray(source&&source.projects)?source.projects:[],
-      settings:Object.assign({dayStart:'08:00',dayEnd:'22:00',webhook:'',dayMemos:{}},source&&source.settings||{}),
+      settings:Object.assign({dayStart:'08:00',dayEnd:'22:00',webhook:'',dayMemos:{},googleClientId:'',googleCalendarId:'primary'},source&&source.settings||{}),
       budgets:Array.isArray(source&&source.budgets)?source.budgets:[]
     }));
   }
@@ -1590,7 +1729,7 @@ body[data-theme="heisei"] .tab-btn{border-radius:14px}
               state.projects=[];
               state.budgets=[];
               state.settings=loadLocalSettings();
-              baseCloudState=cloneData({tasks:[],events:[],routines:[],projects:[],settings:{dayStart:'08:00',dayEnd:'22:00',webhook:'',dayMemos:{}},budgets:[]});
+              baseCloudState=cloneData({tasks:[],events:[],routines:[],projects:[],settings:{dayStart:'08:00',dayEnd:'22:00',webhook:'',dayMemos:{},googleClientId:'',googleCalendarId:'primary'},budgets:[]});
               localStorage.setItem(LS_OWNER,user.uid);
               firestoreReady=true;
               await syncData({skipSafetyCheck:true});
@@ -2671,7 +2810,7 @@ function renderRoutineView(){
     document.getElementById('emEnd').value=event&&event.endMin!=null?minToTimeStr(event.endMin):(defaults&&defaults.endMin!=null?minToTimeStr(defaults.endMin):'');
     document.getElementById('emMemo').value=event?(event.memo||''):(defaults&&defaults.memo)||'';
     const sharedEl=document.getElementById('emShared');
-    if(event) sharedEl.checked=event.shared===true;
+    if(event) sharedEl.checked=(event.externalSync===true || event.shared===true);
     else { const linkedTask=defaults&&defaults.taskId; sharedEl.checked=linkedTask?state.settings.defaultShareTask===true:state.settings.defaultShareStandalone!==false; }
     const sel=document.getElementById('emTask');
     sel.innerHTML='<option value="">紐づけない</option>'+state.tasks.filter(t=>t.status!=='done'&&!isRoutineTask(t)).map(t=>'<option value="'+t.id+'">'+escapeHtml(t.name)+'</option>').join('');
@@ -2695,7 +2834,8 @@ function renderRoutineView(){
     if(!name||!date||startMin==null||endMin==null||endMin<=startMin){showToast('名前・日付・開始/終了時刻を正しく入力してね');return;}
     if(editingEventId){
       const e=state.events.find(x=>x.id===editingEventId); if(!e)return;
-      Object.assign(e,{name,memo,taskId,shared});
+      const wasExternal=e.externalSync===true || e.shared===true;
+      Object.assign(e,{name,memo,taskId,shared,externalSync:shared});
       if(origin==='spontaneous'){
         e.origin='spontaneous'; e.date=date; e.startMin=startMin; e.endMin=endMin;
         e.actualDate=date; e.actualStartMin=startMin; e.actualEndMin=endMin;
@@ -2704,9 +2844,16 @@ function renderRoutineView(){
         e.plannedDate=date; e.plannedStartMin=startMin; e.plannedEndMin=endMin;
       }
     }else{
-      state.events.push({id:uid(),name,date,startMin,endMin,memo,taskId,status:'planned',actualStartTs:null,actualEndTs:null,money:[],shared,origin,plannedDate:origin==='planned'?date:null,plannedStartMin:origin==='planned'?startMin:null,plannedEndMin:origin==='planned'?endMin:null,actualDate:origin==='spontaneous'?date:null,actualStartMin:origin==='spontaneous'?startMin:null,actualEndMin:origin==='spontaneous'?endMin:null});
+      state.events.push({id:uid(),name,date,startMin,endMin,memo,taskId,status:'planned',actualStartTs:null,actualEndTs:null,money:[],shared,externalSync:shared,googleCalendarId:null,googleEventId:null,origin,plannedDate:origin==='planned'?date:null,plannedStartMin:origin==='planned'?startMin:null,plannedEndMin:origin==='planned'?endMin:null,actualDate:origin==='spontaneous'?date:null,actualStartMin:origin==='spontaneous'?startMin:null,actualEndMin:origin==='spontaneous'?endMin:null});
     }
+    const savedEvent=state.events.find(x=>x.id===editingEventId) || state.events[state.events.length-1];
+    const needsExternal=savedEvent && (savedEvent.externalSync===true || savedEvent.shared===true);
+    const hadExternal=savedEvent && savedEvent.googleEventId;
     closeEventModal(); requestSync(); render(); showToast(origin==='spontaneous'?'記録を保存したよ💾':'予定を保存したよ💾');
+    if(savedEvent){
+      if(needsExternal) syncEventToGoogleCalendar(savedEvent);
+      else if(hadExternal) removeEventFromGoogle(savedEvent).then(()=>{requestSync();});
+    }
   });
 
   /* ================= task modal ================= */
@@ -2820,7 +2967,13 @@ function renderRoutineView(){
   async function handleEventAction(action,id){
     const e=state.events.find(x=>x.id===id); if(!e)return;
     if(action==='edit'){openEventModal('edit',e);return;} if(action==='actual'){openActualPrompt(e);return;}
-    if(action==='delete'){if(!confirm('この予定を削除する？'))return; state.events=state.events.filter(x=>x.id!==id); requestSync(); render(); return;}
+    if(action==='delete'){
+      if(!confirm('この予定を削除する？'))return;
+      const deleting=e;
+      state.events=state.events.filter(x=>x.id!==id); requestSync(); render();
+      if(deleting.googleEventId) removeEventFromGoogle(deleting);
+      return;
+    }
     if(action==='progress' || action==='done'){const t=state.tasks.find(x=>x.id===e.taskId); if(!t)return; if(action==='done'){t.status='done'; t.actualEndTs=t.actualEndTs||Date.now(); t.progress=100; e.status='done'; e.actualEndTs=e.actualEndTs||Date.now();} else {const v=prompt('タスクの進捗度（0〜100）',String(Number(t.progress||0))); if(v===null)return; const n=Math.max(0,Math.min(100,Number(v))); if(!Number.isFinite(n))return; t.progress=n; if(n>=100){t.progress=100;t.status='done';e.status='done';} else {e.status='planned';}} requestSync(); render();}
   }
 
@@ -3355,21 +3508,41 @@ function renderRoutineStatsPanel(){
     document.getElementById('setWebhook').value = state.settings.webhook;
     document.getElementById('setDefaultShareStandalone').checked = state.settings.defaultShareStandalone !== false;
     document.getElementById('setDefaultShareTask').checked = state.settings.defaultShareTask === true;
+    document.getElementById('setGoogleClientId').value = state.settings.googleClientId || '';
+    document.getElementById('setGoogleCalendarId').value = state.settings.googleCalendarId || 'primary';
+    googleStatusText();
     settingsModal.classList.add('show');
   }
   document.getElementById('openSettings').addEventListener('click', openSettingsModal);
   document.getElementById('closeSettings').addEventListener('click', ()=> settingsModal.classList.remove('show'));
   settingsModal.addEventListener('click', (e)=>{ if(e.target===settingsModal) settingsModal.classList.remove('show'); });
+  document.getElementById('connectGoogleCalendar').addEventListener('click', ()=>{
+    state.settings.googleClientId=document.getElementById('setGoogleClientId').value.trim();
+    state.settings.googleCalendarId=document.getElementById('setGoogleCalendarId').value.trim() || 'primary';
+    saveLocalSettings(); requestSync();
+    initGoogleTokenClient('consent');
+  });
+  document.getElementById('testGoogleCalendar').addEventListener('click', async ()=>{
+    try{
+      await getGoogleToken();
+      await googleApi('/calendars/'+encodeURIComponent(state.settings.googleCalendarId||'primary'),{method:'GET'});
+      await syncAllExternalEvents();
+    }catch(err){ console.error(err); showToast('Googleカレンダーの接続テストに失敗したよ'); }
+  });
+
   document.getElementById('saveSettings').addEventListener('click', async ()=>{
     state.settings.dayStart = document.getElementById('setDayStart').value || '08:00';
     state.settings.dayEnd = document.getElementById('setDayEnd').value || '22:00';
     state.settings.webhook = document.getElementById('setWebhook').value.trim();
     state.settings.defaultShareStandalone = document.getElementById('setDefaultShareStandalone').checked;
     state.settings.defaultShareTask = document.getElementById('setDefaultShareTask').checked;
+    state.settings.googleClientId = document.getElementById('setGoogleClientId').value.trim();
+    state.settings.googleCalendarId = document.getElementById('setGoogleCalendarId').value.trim() || 'primary';
     settingsModal.classList.remove('show');
     requestSync();
+    googleAccessToken=null; googleTokenExpiresAt=0; googleTokenClient=null; googleStatusText();
     render();
-    showToast('せっていをほぞんしたよ💾');
+    showToast('せっていを保存したよ💾');
   });
   document.getElementById('testWebhook').addEventListener('click', ()=>{
     const url = document.getElementById('setWebhook').value.trim();
