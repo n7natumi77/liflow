@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import {
   executeCommand,
   executeCommandBatch,
+  commandInput,
   parseCommand,
   parseCommandBatch,
   parseDiscordCommand,
   validateCommand,
 } from "./commands.ts";
+import { CURRENT_SCHEMA_VERSION } from "./schema.ts";
 test("deterministic text becomes a structured task command", () =>
   assert.deepEqual(parseCommand("タスク 物理レポート"), {
     type: "CREATE_TASK",
@@ -76,7 +78,7 @@ test("web and external clients share one executor", async () => {
           id: "1",
           type,
           payload,
-          schemaVersion: 3,
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           revision: 1,
           createdAt: "",
           updatedAt: "",
@@ -128,11 +130,24 @@ test("batch uses one atomic adapter call when available", async () => {
     createMany: async (inputs) => {
       count++;
       return inputs.map((input, index) => ({
-        id: String(index), ...input, schemaVersion: 3, revision: 1,
+        id: String(index), ...input, schemaVersion: CURRENT_SCHEMA_VERSION, revision: 1,
         createdAt: "", updatedAt: "", updatedBy: "test", deletedAt: null,
       }));
     },
   });
   assert.equal(count, 1);
   assert.equal(results.length, 2);
+});
+test("v4 command payloads keep Project optional and initialize vNext fields", () => {
+  const task = commandInput({ type: "CREATE_TASK", title: "確認" });
+  const plan = commandInput({ type: "CREATE_PLAN", title: "散歩", startAt: "2026-01-01T10:00:00Z", endAt: "2026-01-01T11:00:00Z" });
+  const actual = commandInput({ type: "CREATE_ACTUAL", title: "写真整理", startAt: "2026-01-01T12:00:00Z", endAt: "2026-01-01T12:20:00Z" });
+  assert.equal(task.payload.directionId, null);
+  assert.equal(task.payload.nextAction, null);
+  assert.equal(task.payload.estimatedRemainingMinutes, null);
+  assert.equal(plan.payload.taskId, null);
+  assert.equal(plan.payload.projectId, null);
+  assert.equal(plan.payload.directionId, null);
+  assert.equal(actual.payload.planId, null);
+  assert.equal(actual.payload.directionId, null);
 });

@@ -61,6 +61,8 @@
     "mobile-routines.png",
     "mobile-tasks.png",
     "mobile-week.png",
+    "production-smoke-error.log",
+    "production-smoke.log",
     "smoke-results.json"
   ]
 }

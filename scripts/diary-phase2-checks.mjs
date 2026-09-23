@@ -94,9 +94,10 @@ export async function phase2Checks({ page, snapshot, get, mainTab, menuTab, wait
   const beforePlan = await get("overlap"), actualCount = (await snapshot()).filter(e => e.type === "actual").length;
   await page.locator('[data-check-id="overlap"]').getByRole("button", { name: "だいたい予定通り", exact: true }).click();
   const recordedPlan = await get("overlap"); assert.equal(recordedPlan.payload.startAt, beforePlan.payload.startAt);
-  assert.equal(recordedPlan.payload.endAt, beforePlan.payload.endAt); assert.ok(recordedPlan.payload.actualId);
+  assert.equal(recordedPlan.payload.endAt, beforePlan.payload.endAt); assert.equal(recordedPlan.payload.actualId, beforePlan.payload.actualId);
   assert.equal((await snapshot()).filter(e => e.type === "actual").length, actualCount + 1);
-  assert.equal((await get(recordedPlan.payload.actualId)).payload.planId, "overlap");
+  const recordedActuals = (await snapshot()).filter(e => e.type === "actual" && e.payload.planId === "overlap" && !e.deletedAt);
+  assert.equal(recordedActuals.length, 1);
   await page.locator('[data-check-id="note1"]').getByRole("button", { name: "タスクにする", exact: true }).click();
   assert.equal((await get("note1")).payload.sorted, true); assert.equal((await get("note1")).deletedAt, null);
   assert.equal((await snapshot()).filter(e => e.type === "task" && e.payload.title === "来週のゼミの持ち物を確認").length, 1);

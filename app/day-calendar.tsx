@@ -81,7 +81,7 @@ export default function DayCalendar({ date, plans, capacityPlans, actuals, routi
   const events = { onPointerMove: move, onPointerUp: finish, onPointerCancel: () => assign(null), onLostPointerCapture: () => assign(null) };
   const style = (range: Range): CSSProperties => ({ top: range.start * PIXEL, height: (range.end - range.start) * PIXEL });
   const { start: dayStart, end: dayEnd } = dayBounds(date);
-  const editable = (plan: CoreEntity<PlanData>) => new Date(plan.payload.startAt) >= dayStart && new Date(plan.payload.endAt) <= dayEnd && !plan.payload.actualId;
+  const editable = (plan: CoreEntity<PlanData>) => new Date(plan.payload.startAt) >= dayStart && new Date(plan.payload.endAt) <= dayEnd;
   const shortcut = (event: React.KeyboardEvent<HTMLButtonElement>, entity: CoreEntity<PlanData>, resize = false) => {
     if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
     event.preventDefault();

@@ -1,9 +1,10 @@
 /* Only the isolated UI test server aliases firebase-store to this module.
    There is no Firebase import, connection, or persistence in this fixture. */
-import type { CoreEntity, EntityType, PlanData, ActualData, ConflictData } from "../../domain/core";
+import { inheritedDirection, type CoreEntity, type EntityType, type PlanData, type ActualData, type ConflictData } from "../../domain/core";
+import { CURRENT_SCHEMA_VERSION } from "../../domain/schema";
 const timestamp = "2026-09-16T07:42:00.000Z";
 const at = (time: string) => new Date("2026-09-16T" + time + ":00+09:00").toISOString();
-const entity = (id: string, type: EntityType, payload: object): CoreEntity => ({ id, type, payload: payload as Record<string, unknown>, revision: 1, schemaVersion: 3, createdAt: timestamp, updatedAt: timestamp, updatedBy: "fixture", deletedAt: null });
+const entity = (id: string, type: EntityType, payload: object): CoreEntity => ({ id, type, payload: payload as Record<string, unknown>, revision: 1, schemaVersion: CURRENT_SCHEMA_VERSION, createdAt: timestamp, updatedAt: timestamp, updatedBy: "fixture", deletedAt: null });
 const plan = (id: string, title: string, start: string, end: string, category = "study") => entity(id, "plan", { title, startAt: at(start), endAt: at(end), type: "task", flexibility: "fixed", allDay: false, taskId: null, projectId: null, calendarCategoryId: category, resolution: null, actualId: null });
 let entities = [
   entity("study", "calendarCategory", { name: "勉強", colorToken: "#b9a1e3", sortOrder: 0, archived: false }),
@@ -65,21 +66,20 @@ export async function listBackups() { return []; }
 export async function restoreBackup() { throw new Error("not_available_in_fixture"); }
 export async function resolveConflict(_uid: string, conflict: CoreEntity<ConflictData>) { return { resolvedTarget: conflict, resolvedConflict: conflict }; }
 export async function postponePlan(uid: string, old: CoreEntity<PlanData>) {
-  const nextPlan = await createEntity(uid, "plan", { ...old.payload, startAt: new Date(+new Date(old.payload.startAt) + 86400000).toISOString(), endAt: new Date(+new Date(old.payload.endAt) + 86400000).toISOString() });
-  const resolved = await updateEntity(uid, old, { ...old.payload, resolution: "postponed" });
+  const nextPlan = await createEntity(uid, "plan", { ...old.payload, actualId: null, startAt: new Date(+new Date(old.payload.startAt) + 86400000).toISOString(), endAt: new Date(+new Date(old.payload.endAt) + 86400000).toISOString(), resolution: null, rescheduledFromPlanId: old.id, rescheduledToPlanId: null });
+  const resolved = await updateEntity(uid, old, { ...old.payload, resolution: "postponed", rescheduledToPlanId: nextPlan.id });
   return { nextPlan, resolved };
 }
 export async function recordActualForPlan(uid: string, old: CoreEntity<PlanData>, payload: ActualData) {
-  const actual = await createEntity(uid, "actual", { ...payload, planId: old.id });
-  const linkedPlan = await updateEntity(uid, old, { ...old.payload, actualId: actual.id });
-  return { actual, linkedPlan };
+  const actual = await createEntity(uid, "actual", { ...payload, planId: old.id, directionId: inheritedDirection(payload.directionId, old.payload.directionId) });
+  return { actual, linkedPlan: old };
 }
 export async function recordPlanAsActual(uid: string, old: CoreEntity<PlanData>) {
   return recordActualForPlan(uid, old, { title: old.payload.title, startAt: old.payload.startAt, endAt: old.payload.endAt, type: old.payload.type });
 }
 export async function deleteActualAndUnlinkPlan(uid: string, actual: CoreEntity<ActualData>, old: CoreEntity<PlanData>) {
   const deletedActual = await updateEntity(uid, actual, actual.payload, true);
-  const unlinkedPlan = await updateEntity(uid, old, { ...old.payload, actualId: null });
+  const unlinkedPlan = old.payload.actualId === actual.id ? await updateEntity(uid, old, { ...old.payload, actualId: null }) : old;
   return { deletedActual, unlinkedPlan };
 }
 declare global {

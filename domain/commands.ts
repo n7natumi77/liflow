@@ -79,6 +79,9 @@ export async function executeCommand(
       description: "",
       deadline: command.deadline || null,
       estimateMinutes: null,
+      estimatedRemainingMinutes: null,
+      nextAction: null,
+      directionId: null,
       projectId: null,
       parentTaskId: null,
       calendarCategoryId: null,
@@ -93,12 +96,15 @@ export async function executeCommand(
       taskId: command.taskId || null,
       projectId: null,
       calendarCategoryId: null,
+      directionId: null,
       startAt: command.startAt,
       endAt: command.endAt,
       type: "personal",
       flexibility: "fixed",
       allDay: false,
       resolution: null,
+      rescheduledFromPlanId: null,
+      rescheduledToPlanId: null,
     };
     return { kind: "created", entity: await port.create("plan", payload) };
   }
@@ -109,6 +115,7 @@ export async function executeCommand(
       planId: command.planId || null,
       projectId: null,
       calendarCategoryId: null,
+      directionId: null,
       startAt: command.startAt,
       endAt: command.endAt,
       type: "personal",
@@ -174,7 +181,8 @@ export function commandInput(command: Exclude<LiflowCommand, { type: "SHOW_NOW" 
       type: "task" as const,
       payload: {
         title: command.title.trim(), description: "", deadline: command.deadline || null,
-        estimateMinutes: null, projectId: null, parentTaskId: null,
+        estimateMinutes: null, estimatedRemainingMinutes: null, nextAction: null,
+        directionId: null, projectId: null, parentTaskId: null,
         calendarCategoryId: null, status: "open", completedAt: null,
       } satisfies TaskData,
     };
@@ -183,8 +191,9 @@ export function commandInput(command: Exclude<LiflowCommand, { type: "SHOW_NOW" 
       type: "plan" as const,
       payload: {
         title: command.title.trim(), taskId: command.taskId || null, projectId: null,
-        calendarCategoryId: null, startAt: command.startAt, endAt: command.endAt,
+        calendarCategoryId: null, directionId: null, startAt: command.startAt, endAt: command.endAt,
         type: "personal", flexibility: "fixed", allDay: false, resolution: null,
+        rescheduledFromPlanId: null, rescheduledToPlanId: null,
       } satisfies PlanData,
     };
   if (command.type === "CREATE_ACTUAL")
@@ -192,7 +201,7 @@ export function commandInput(command: Exclude<LiflowCommand, { type: "SHOW_NOW" 
       type: "actual" as const,
       payload: {
         title: command.title.trim(), taskId: null, planId: command.planId || null,
-        projectId: null, calendarCategoryId: null, startAt: command.startAt,
+        projectId: null, calendarCategoryId: null, directionId: null, startAt: command.startAt,
         endAt: command.endAt, type: "personal", note: "",
       } satisfies ActualData,
     };

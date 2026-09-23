@@ -6,7 +6,7 @@ Liflowを自分のPCで起動してテストできる配布版です。ChatGPT W
 
 「今日を整える」では、予定通りのActual作成、実際の時間の入力、やらなかった、不要になった、明日への延期を選べます。予定通りのActual作成と延期はFirestoreトランザクションで処理し、途中までしか保存されない状態を防ぎます。元のPlanは上書きせず履歴として残ります。
 
-設定画面で一日の開始・終了時刻を変更できます。「今」の残り利用可能時間は設定した終了時刻までで計算します。手入力したActualのPlanへの関連付けと、関連Actual削除時のリンク解除もFirestoreトランザクションで処理します。未整理の時間重複判定は、今後の有効な通常予定だけを対象にします。
+設定画面で一日の開始・終了時刻を変更できます。「今」の残り利用可能時間は設定した終了時刻までで計算します。ActualからPlanへの関連付けと、旧`Plan.actualId`が残るデータの互換リンク解除もFirestoreトランザクションで処理します。schema v4では`Actual.planId`が正規参照で、1件のPlanへ複数のActualを記録できます。未整理の時間重複判定は、今後の有効な通常予定だけを対象にします。
 
 ## 必要なもの
 
@@ -40,7 +40,9 @@ Firebase ConsoleではAuthenticationの「メール/パスワード」を有効�
 
 ## Schemaとバックアップ
 
-永続Entityは共通registryで管理され、すべて`schemaVersion`を持ちます。旧データは段階的に現在のschema v3へ移行します。移行前には`users/{uid}/backups/{backupId}`へ件数・時刻・schemaVersionを記録し、その下へEntity単位のsnapshotを保存します。snapshotの保存完了後にだけmigrationを開始します。設定画面から過去のsnapshotを選んで復元でき、復元直前の状態も自動で別snapshotへ保存します。
+永続Entityは共通registryで管理され、すべて`schemaVersion`を持ちます。旧データは`v1 → v2 → v3 → v4`の順で段階的に移行します。移行前には`users/{uid}/backups/{backupId}`へ件数・時刻・schemaVersionを記録し、その下へEntity単位のsnapshotを保存します。snapshotの保存完了後にだけmigrationを開始します。設定画面から過去のsnapshotを選んで復元でき、復元直前の状態も自動で別snapshotへ保存します。
+
+schema v4ではTask / Plan / Actualへ任意の`directionId`を追加し、固定IDの初期Direction（学業・専門・進路・生活・世界）を重複なく初期化します。Taskは`nextAction`と`estimatedRemainingMinutes`を保持できます。`recurringActivityRule`、`routineFlow`、`routineRun`、`sleepRecord`、`conditionRecord`も同じEntity registry、revision、tombstone、backupの対象です。既存ProjectとRoutineは推測変換せず、そのまま保持します。
 
 移行中にEntityの消失、revision競合、未知の新しいschema、種類別件数の減少を検出した場合は自動更新を停止します。旧データを初期化して捨てる処理はありません。バックアップ内のEntityはクライアントから更新・削除できないFirestoreルールです。
 
@@ -127,4 +129,4 @@ Botは許可済みDiscord User IDだけを受け付けます。Firestoreへは`r
 - `npm run lint`
 - `npm run build`
 
-Task、Plan、Actualは別々のエンティティとして保存されます。削除はデータを即時消去せず、tombstoneとして記録します。
+Task、Plan、Actualは別々のエンティティとして保存されます。PlanなしActualとTaskなしPlanも保存でき、Planに紐づくActualは`Actual.planId`で複数取得します。削除はデータを即時消去せず、tombstoneとして記録します。

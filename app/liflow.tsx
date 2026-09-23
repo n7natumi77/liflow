@@ -19,6 +19,7 @@ import {
 import {
   active,
   inheritedCategory,
+  inheritedDirection,
   unresolved,
   validTimeRange,
   wouldCreateCycle,
@@ -1067,6 +1068,9 @@ export function CaptureModal({
           description: task?.payload.description || "",
           deadline: due ? task?.payload.deadline && due === localDate(new Date(task.payload.deadline)) ? task.payload.deadline : toIso(due, "23:59") : null,
           estimateMinutes: task?.payload.estimateMinutes || null,
+          estimatedRemainingMinutes: task?.payload.estimatedRemainingMinutes ?? null,
+          nextAction: task?.payload.nextAction ?? null,
+          directionId: task?.payload.directionId ?? null,
           projectId: projectId || null,
           parentTaskId: parentTaskId || null,
           calendarCategoryId: effectiveCategory,
@@ -1080,12 +1084,15 @@ export function CaptureModal({
           taskId: modal.taskId || plan?.payload.taskId || null,
           projectId: projectId || null,
           calendarCategoryId: effectiveCategory,
+          directionId: inheritedDirection(plan?.payload.directionId, task?.payload.directionId),
           startAt: allDay ? originalAllDay && startValue && date === localDate(new Date(startValue)) ? startValue : toIso(date, "00:00") : preserveTime(date, start, startValue),
           endAt: allDay ? originalAllDay && endValue && endDate === inclusiveEndDay(endValue) ? endValue : endOfDay(endDate) : preserveTime(endDate, end, endValue),
           type: planType,
           flexibility: plan?.payload.flexibility || "fixed",
           allDay,
           resolution: plan?.payload.resolution || null,
+          rescheduledFromPlanId: plan?.payload.rescheduledFromPlanId || null,
+          rescheduledToPlanId: plan?.payload.rescheduledToPlanId || null,
         };
       if (kind === "actual")
         payload = {
@@ -1095,6 +1102,11 @@ export function CaptureModal({
           planId: String(editingPayload.planId || modal.planId || "") || null,
           projectId: projectId || null,
           calendarCategoryId: effectiveCategory,
+          directionId: inheritedDirection(
+            typeof editingPayload.directionId === "string" ? editingPayload.directionId : null,
+            plan?.payload.directionId,
+            task?.payload.directionId,
+          ),
           startAt: preserveTime(date, start, startValue),
           endAt: preserveTime(endDate, end, endValue),
           type: String(editingPayload.type || plan?.payload.type || planType),

@@ -50,7 +50,7 @@ export function InboxView({ entities, checks, update, postpone, recordAsPlanned,
               {c.kind === "inbox" && entity && <>
                 <button className="diary-button primary" disabled={action.busy} onClick={() => run(async () => {
                   if (!converted.has(entity.id)) {
-                    await create("task", { title: (entity.payload as InboxData).text, description: "", deadline: null, estimateMinutes: null, projectId: null, parentTaskId: null, calendarCategoryId: null, status: "open", completedAt: null });
+                    await create("task", { title: (entity.payload as InboxData).text, description: "", deadline: null, estimateMinutes: null, estimatedRemainingMinutes: null, nextAction: null, directionId: null, projectId: null, parentTaskId: null, calendarCategoryId: null, status: "open", completedAt: null });
                     setConverted(old => new Set([...old, entity.id]));
                   }
                   await update(entity, { ...entity.payload, sorted: true });
