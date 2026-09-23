@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { Check, Clock3, Edit3, Plus, Repeat2, RotateCcw, Trash2 } from "lucide-react";
-import { active, routineOccurs, type CalendarCategoryData, type CoreEntity, type RoutineData, type RoutineOccurrenceData } from "../domain/core";
+import { active, routineOccurs, type CalendarCategoryData, type CoreEntity, type RoutineData, type RoutineFlowData, type RoutineFlowStep, type RoutineOccurrenceData, type RoutineRunData } from "../domain/core";
+import { startRoutineRunPayload } from "../domain/execution";
 import { dateKey } from "./diary-time";
 import { ActionFeedback, DiaryEmpty, SectionDialog, SectionHeading, useDiaryAction, type SectionProps } from "./diary-section";
 
@@ -14,9 +15,12 @@ function scheduleLabel(routine: RoutineData) {
 
 export function RoutinesView({ entities, create, update }: SectionProps) {
   const routines = active<RoutineData>(entities, "routine"), occurrences = active<RoutineOccurrenceData>(entities, "routineOccurrence"), categories = active<CalendarCategoryData>(entities, "calendarCategory");
+  const flows = active<RoutineFlowData>(entities, "routineFlow");
+  const runningFlow = active<RoutineRunData>(entities, "routineRun").find(item => item.payload.status === "running");
   const [editing, setEditing] = useState<CoreEntity<RoutineData> | null | undefined>(undefined), [filter, setFilter] = useState("today");
   const [title, setTitle] = useState(""), [description, setDescription] = useState(""), [rule, setRule] = useState<RoutineData["scheduleRule"]["kind"]>("daily"), [days, setDays] = useState<number[]>([]);
   const [time, setTime] = useState(""), [duration, setDuration] = useState(""), [category, setCategory] = useState(""), [enabled, setEnabled] = useState(true);
+  const [flowEditing, setFlowEditing] = useState<CoreEntity<RoutineFlowData> | null | undefined>(undefined), [flowName, setFlowName] = useState(""), [flowTrigger, setFlowTrigger] = useState<RoutineFlowData["trigger"]["type"]>("manual"), [flowEnabled, setFlowEnabled] = useState(true), [flowSteps, setFlowSteps] = useState("");
   const action = useDiaryAction(), today = new Date(), date = dateKey(today);
   const todays = routines.filter(r => r.payload.active && routineOccurs(r.payload.scheduleRule, today));
   const done = todays.filter(r => occurrences.some(o => o.payload.routineId === r.id && o.payload.date === date && o.payload.status === "done")).length;
@@ -36,6 +40,22 @@ export function RoutinesView({ entities, create, update }: SectionProps) {
     if (old) await update(old, { ...old.payload, status });
     else await create("routineOccurrence", { routineId: routine.id, date, status, actualId: null });
   }, status === "done" ? "今日の実施を記録しました" : "今日はスキップにしました");
+  const beginFlow = (item: CoreEntity<RoutineFlowData> | null = null) => {
+    setFlowEditing(item); setFlowName(item?.payload.name || ""); setFlowTrigger(item?.payload.trigger.type || "manual"); setFlowEnabled(item?.payload.active ?? true);
+    setFlowSteps((item?.payload.steps || []).map(step => `${step.title}|${step.executionMode}|${step.estimatedMinutes || ""}`).join("\n")); action.clearError();
+  };
+  const saveFlow = async () => {
+    const modes = new Set<RoutineFlowStep["executionMode"]>(["automatic", "checkOnly", "softTimer", "pacedTimer", "checklist"]);
+    const steps = flowSteps.split("\n").map((line, index) => {
+      const [title, rawMode, rawMinutes] = line.split("|").map(value => value.trim());
+      const old = flowEditing?.payload.steps[index];
+      const executionMode = modes.has(rawMode as RoutineFlowStep["executionMode"]) ? rawMode as RoutineFlowStep["executionMode"] : "checkOnly";
+      return title ? { ...old, id: old?.id || `step-${index + 1}`, title, executionMode, estimatedMinutes: rawMinutes ? Math.max(1, Number(rawMinutes)) : null } : null;
+    }).filter(Boolean) as RoutineFlowStep[];
+    if (!flowName.trim() || !steps.length) return;
+    const payload: RoutineFlowData = { name: flowName.trim(), trigger: { type: flowTrigger }, active: flowEnabled, steps };
+    if (await action.run(() => flowEditing ? update(flowEditing, payload) : create("routineFlow", payload))) setFlowEditing(undefined);
+  };
   return <section className="panel notebook routines-notebook">
     <SectionHeading icon={<Repeat2/>} title="今日のルーティン" description="毎日のことは、今日の分だけ。無理のないペースで。" action={<button className="diary-button primary" onClick={() => begin()}><Plus size={16}/>ルーティンを追加</button>}/>
     <div className="routine-day-summary"><span>{today.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday: "short" })}</span><b>{done}<small> / {todays.length} 実施済み</small></b><progress aria-label="今日のルーティン実施数" value={done} max={todays.length || 1}/></div>
@@ -51,6 +71,10 @@ export function RoutinesView({ entities, create, update }: SectionProps) {
         {onToday && <div className="routine-card-actions"><button className="diary-button primary" aria-pressed={state === "done"} disabled={action.busy || state === "done"} onClick={() => record(routine, "done")}><Check size={15}/>実施</button><button className="diary-button" aria-pressed={state === "skipped"} disabled={action.busy || state === "skipped"} onClick={() => record(routine, "skipped")}>スキップ</button>{occurrence && <button className="diary-text-button" disabled={action.busy} onClick={() => void action.run(() => update(occurrence, occurrence.payload, true), "今日の記録を戻しました")}><RotateCcw size={13}/>記録を戻す</button>}</div>}
       </article>;
     }) : <DiaryEmpty title={filter === "today" ? "今日のルーティンはありません" : "この表示のルーティンはありません"}>「すべて」から曜日や休止の設定を確認できます。</DiaryEmpty>}</div>
+    <div className="routine-flow-list">
+      <SectionHeading icon={<RotateCcw/>} title="生活手順" description="起床後や就寝前の流れを、Now画面で1つずつ案内します。" action={<button className="diary-button" onClick={() => beginFlow()}><Plus size={16}/>手順を追加</button>}/>
+      {flows.map(flow => <article className="routine-card" key={flow.id}><div className="routine-card-header"><span className="routine-stamp"><RotateCcw/></span><div><h3>{flow.payload.name}</h3><span className="entry-meta"><span>{flow.payload.trigger.type}</span><span>{flow.payload.steps.length} Step</span>{!flow.payload.active && <span>休止中</span>}</span></div><button className="diary-icon-button" aria-label={`${flow.payload.name}を編集`} onClick={() => beginFlow(flow)}><Edit3 size={16}/></button></div><p className="routine-description">{flow.payload.steps.map(step => step.title).join(" → ")}</p><div className="routine-card-actions"><button className="diary-button primary" disabled={action.busy || !!runningFlow || !flow.payload.active} onClick={() => void action.run(() => create("routineRun", startRoutineRunPayload(flow, new Date()) as unknown as Record<string, unknown>), "生活手順を開始しました")}><Clock3 size={15}/>開始</button></div></article>)}
+    </div>
     {editing !== undefined && <SectionDialog title={editing ? "ルーティンを編集" : "ルーティンを追加"} close={() => setEditing(undefined)} busy={action.busy}><form onSubmit={e => { e.preventDefault(); void save(); }}><fieldset disabled={action.busy}>
       <label>名前<input autoFocus required value={title} onChange={e => setTitle(e.target.value)}/></label>
       <label>説明<textarea aria-label="説明" rows={2} value={description} onChange={e => setDescription(e.target.value)}/></label>
@@ -62,6 +86,15 @@ export function RoutinesView({ entities, create, update }: SectionProps) {
       <label className="checkbox-label"><input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)}/>有効にする</label>
       <ActionFeedback {...action}/><button className="save" type="submit" disabled={!title.trim() || (rule === "weekly" && !days.length)}>保存する</button>
       {editing && <button className="delete-entity" type="button" onClick={async () => { if (await action.run(() => update(editing, editing.payload, true), "ルーティンを削除しました")) setEditing(undefined); }}><Trash2 size={15}/>削除</button>}
+    </fieldset></form></SectionDialog>}
+    {flowEditing !== undefined && <SectionDialog title={flowEditing ? "生活手順を編集" : "生活手順を追加"} close={() => setFlowEditing(undefined)} busy={action.busy}><form onSubmit={event => { event.preventDefault(); void saveFlow(); }}><fieldset disabled={action.busy}>
+      <label>名前<input autoFocus required value={flowName} onChange={event => setFlowName(event.target.value)}/></label>
+      <label>開始条件<select value={flowTrigger} onChange={event => setFlowTrigger(event.target.value as typeof flowTrigger)}><option value="afterWake">起床後</option><option value="beforeDeparture">出発前</option><option value="afterReturnHome">帰宅後</option><option value="beforeSleep">就寝前</option><option value="manual">手動</option></select></label>
+      <label>Step（1行1件：名前 | mode | 分）<textarea rows={8} value={flowSteps} onChange={event => setFlowSteps(event.target.value)} placeholder={"顔を洗う | checkOnly | 3\n朝食 | softTimer | 15"}/></label>
+      <p className="field-hint">mode: automatic / checkOnly / softTimer / pacedTimer / checklist</p>
+      <label className="checkbox-label"><input type="checkbox" checked={flowEnabled} onChange={event => setFlowEnabled(event.target.checked)}/>有効にする</label>
+      <ActionFeedback {...action}/><button className="save" type="submit" disabled={!flowName.trim() || !flowSteps.trim()}>保存する</button>
+      {flowEditing && <button className="delete-entity" type="button" onClick={async () => { if (await action.run(() => update(flowEditing, flowEditing.payload, true), "生活手順を削除しました")) setFlowEditing(undefined); }}><Trash2 size={15}/>削除</button>}
     </fieldset></form></SectionDialog>}
   </section>;
 }

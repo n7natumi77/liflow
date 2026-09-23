@@ -5,7 +5,7 @@ import {
   type EntityType,
 } from "./core.ts";
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 export type StoredEntity = Omit<CoreEntity, "schemaVersion"> & { schemaVersion?: number };
 export type EntityCounts = Record<EntityType, number>;
 
@@ -52,6 +52,7 @@ const legacyDefaults: Record<EntityType, Record<string, unknown>> = {
   routineRun: {},
   sleepRecord: {},
   conditionRecord: {},
+  executionSession: {},
   transaction: {
     category: "その他",
     expectedAt: null,
@@ -124,12 +125,54 @@ const v4Defaults: Record<EntityType, Record<string, unknown>> = {
     source: "manual",
     confidence: null,
   },
+  executionSession: {
+    endedAt: null,
+    status: "running",
+    suggestedMinutes: null,
+    directionId: null,
+    actualId: null,
+  },
   transaction: {},
   checkin: {},
   calendarCategory: {},
   direction: { description: "", icon: "", colorToken: "", active: true, sortOrder: 0 },
   project: {},
   settings: {},
+  conflict: {},
+};
+
+/** Only schema-v5 additions belong here. */
+const v5Defaults: Record<EntityType, Record<string, unknown>> = {
+  task: {},
+  plan: {},
+  actual: {},
+  inbox: {},
+  routine: {},
+  routineOccurrence: {},
+  recurringActivityRule: {},
+  routineFlow: {},
+  routineRun: {},
+  sleepRecord: {},
+  conditionRecord: {},
+  executionSession: {
+    endedAt: null,
+    status: "running",
+    suggestedMinutes: null,
+    directionId: null,
+    actualId: null,
+  },
+  transaction: {},
+  checkin: {},
+  calendarCategory: {},
+  direction: {},
+  project: {},
+  settings: {
+    guidanceIntensity: "strong",
+    transitionBufferMinutes: 10,
+    departureSafetyBufferMinutes: 10,
+    targetSleepTime: "23:30",
+    windDownMinutes: 45,
+  },
   conflict: {},
 };
 
@@ -155,6 +198,31 @@ export const DEFAULT_DIRECTIONS = [
     payload: { name: "世界", description: "人・社会・外の世界", icon: "globe", colorToken: "direction-world", active: true, sortOrder: 4 },
   },
 ] as const satisfies readonly { id: string; payload: DirectionData }[];
+
+export const DEFAULT_MORNING_FLOW_ID = "routine_flow_morning_default";
+export const DEFAULT_MORNING_FLOW = {
+  name: "朝の支度",
+  trigger: { type: "afterWake" as const },
+  active: true,
+  steps: [
+    { id: "wash-face", title: "顔を洗う", executionMode: "checkOnly" as const, estimatedMinutes: 3 },
+    { id: "breakfast", title: "朝食", executionMode: "softTimer" as const, estimatedMinutes: 15 },
+    { id: "change-clothes", title: "着替える", executionMode: "checkOnly" as const, estimatedMinutes: 5 },
+    { id: "makeup", title: "メイク", executionMode: "pacedTimer" as const, estimatedMinutes: 12 },
+    { id: "brush-teeth", title: "歯磨き", executionMode: "checkOnly" as const, estimatedMinutes: 3 },
+    {
+      id: "belongings",
+      title: "持ち物確認",
+      executionMode: "checklist" as const,
+      estimatedMinutes: 2,
+      checklistItems: [
+        { id: "phone", title: "スマホ" },
+        { id: "wallet", title: "財布" },
+        { id: "keys", title: "鍵" },
+      ],
+    },
+  ],
+};
 
 export const emptyCounts = (): EntityCounts =>
   Object.fromEntries(ENTITY_TYPES.map((type) => [type, 0])) as EntityCounts;
@@ -194,6 +262,13 @@ export function migrateEntity(input: StoredEntity): CoreEntity {
       ...entity,
       payload: { ...v4Defaults[entity.type], ...entity.payload },
       schemaVersion: 4,
+    };
+  }
+  if (entity.schemaVersion === 4) {
+    entity = {
+      ...entity,
+      payload: { ...v5Defaults[entity.type], ...entity.payload },
+      schemaVersion: 5,
     };
   }
   if (entity.schemaVersion !== CURRENT_SCHEMA_VERSION) {
@@ -246,6 +321,29 @@ export function ensureDefaultDirections(entities: CoreEntity[], metadata: Direct
   return result;
 }
 
+export function ensureDefaultMorningFlow(entities: CoreEntity[], metadata: DirectionMetadata = {}) {
+  const stable = entities.find((entity) => entity.id === DEFAULT_MORNING_FLOW_ID);
+  if (stable && stable.type !== "routineFlow") {
+    throw new Error(`migration_id_collision:${DEFAULT_MORNING_FLOW_ID}`);
+  }
+  if (entities.some((entity) => entity.type === "routineFlow")) return entities;
+  const now = metadata.now || "1970-01-01T00:00:00.000Z";
+  return [
+    ...entities,
+    {
+      id: DEFAULT_MORNING_FLOW_ID,
+      type: "routineFlow" as const,
+      payload: structuredClone(DEFAULT_MORNING_FLOW),
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+      updatedBy: metadata.updatedBy || "migration:schema-v5",
+      deletedAt: null,
+    },
+  ];
+}
+
 /**
  * Schema v3 wrote both Plan.actualId and Actual.planId. If an old snapshot only
  * has the Plan-side pointer, promote that explicit one-to-one fact to the v4
@@ -269,7 +367,7 @@ export function backfillCanonicalActualPlanLinks(entities: CoreEntity[]) {
 
 export function migrateSnapshot(input: StoredEntity[], metadata: DirectionMetadata = {}) {
   const migrated = backfillCanonicalActualPlanLinks(input.map(migrateEntity));
-  const initialized = ensureDefaultDirections(migrated, metadata);
+  const initialized = ensureDefaultMorningFlow(ensureDefaultDirections(migrated, metadata), metadata);
   assertNoEntityLoss(input, initialized);
   return initialized;
 }

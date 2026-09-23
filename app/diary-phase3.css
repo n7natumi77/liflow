@@ -6,6 +6,22 @@
   --ledger-flourish:url("/themes/magical-diary/ledger-flourish.svg");
   --paper-line:color-mix(in srgb,var(--line) 72%,transparent);
 }
+
+/* vNext Phase 1: the Now decision stays visually singular and actionable. */
+.now-primary { min-width: 9rem; justify-content: center; font-size: 1rem; }
+.now-session-actions,
+.now-routine-actions,
+.start-assist { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; margin-top: .75rem; }
+.now-routine-actions { align-items: stretch; flex-direction: column; }
+.now-check-item { display: flex; gap: .55rem; align-items: center; padding: .5rem .65rem; border: 1px dashed var(--line); border-radius: .7rem; background: color-mix(in srgb, var(--paper) 88%, transparent); }
+.assist-reasons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; margin-top: .65rem; }
+.assist-reasons button { padding: .55rem .65rem; border: 1px solid var(--line); border-radius: .65rem; background: var(--paper); color: inherit; text-align: left; }
+.field-hint { display: block; margin-top: .3rem; color: var(--muted); font-size: .76rem; }
+.routine-timer-urgent { color: #a74662; font-weight: 750; }
+@media (max-width: 520px) {
+  .assist-reasons { grid-template-columns: 1fr; }
+  .now-session-actions > button { flex: 1 1 100%; }
+}
 .diary-theme .diary-main{
   background-image:var(--pearl-paper),var(--surface);
   background-size:420px 420px,auto;

@@ -1,12 +1,15 @@
 /* Only the isolated UI test server aliases firebase-store to this module.
    There is no Firebase import, connection, or persistence in this fixture. */
-import { inheritedDirection, type CoreEntity, type EntityType, type PlanData, type ActualData, type ConflictData } from "../../domain/core";
-import { CURRENT_SCHEMA_VERSION } from "../../domain/schema";
+import { inheritedDirection, type CoreEntity, type EntityType, type PlanData, type ActualData, type ConflictData, type ExecutionSessionData, type RoutineFlowData, type RoutineRunData, type SleepRecordData, type TaskData } from "../../domain/core";
+import { CURRENT_SCHEMA_VERSION, DEFAULT_DIRECTIONS, DEFAULT_MORNING_FLOW, DEFAULT_MORNING_FLOW_ID } from "../../domain/schema";
+import { completionPayloads, executionActualId, startRoutineRunPayload } from "../../domain/execution";
 const timestamp = "2026-09-16T07:42:00.000Z";
 const at = (time: string) => new Date("2026-09-16T" + time + ":00+09:00").toISOString();
 const entity = (id: string, type: EntityType, payload: object): CoreEntity => ({ id, type, payload: payload as Record<string, unknown>, revision: 1, schemaVersion: CURRENT_SCHEMA_VERSION, createdAt: timestamp, updatedAt: timestamp, updatedBy: "fixture", deletedAt: null });
 const plan = (id: string, title: string, start: string, end: string, category = "study") => entity(id, "plan", { title, startAt: at(start), endAt: at(end), type: "task", flexibility: "fixed", allDay: false, taskId: null, projectId: null, calendarCategoryId: category, resolution: null, actualId: null });
 let entities = [
+  ...DEFAULT_DIRECTIONS.map(item => entity(item.id, "direction", item.payload)),
+  entity(DEFAULT_MORNING_FLOW_ID, "routineFlow", DEFAULT_MORNING_FLOW),
   entity("study", "calendarCategory", { name: "勉強", colorToken: "#b9a1e3", sortOrder: 0, archived: false }),
   entity("school", "calendarCategory", { name: "大学", colorToken: "#93c5e5", sortOrder: 1, archived: false }),
   entity("life", "calendarCategory", { name: "生活", colorToken: "#eaa6c4", sortOrder: 2, archived: false }),
@@ -37,7 +40,7 @@ let entities = [
   entity("money1", "transaction", { title: "電車", amount: 420, direction: "expense", category: "交通", occurredAt: at("08:00"), status: "settled" }),
   entity("money2", "transaction", { title: "参考書の代金", amount: 2000, direction: "expense", category: "勉強", occurredAt: at("08:00"), expectedAt: at("10:00"), status: "expected", projectId: "project", taskId: "task2", planId: "library", actualId: "actual2", note: "ゼミで使う参考書" }),
   entity("income", "transaction", { title: "アルバイトの給与", amount: 28000, direction: "income", category: "給与", occurredAt: "2026-09-15T03:00:00Z", status: "settled" }),
-  entity("settings", "settings", { calendarView: "day", visibleCalendarCategories: [], showPlan: true, showActual: true, showTaskDeadlines: true, dayStart: "07:00", dayEnd: "23:00" }),
+  entity("settings", "settings", { calendarView: "day", visibleCalendarCategories: [], showPlan: true, showActual: true, showTaskDeadlines: true, dayStart: "07:00", dayEnd: "23:00", guidanceIntensity: "strong", transitionBufferMinutes: 10, departureSafetyBufferMinutes: 10, targetSleepTime: "23:30", windDownMinutes: 45 }),
 ];
 type Listener = (items: CoreEntity[]) => void;
 const listeners = new Set<Listener>();
@@ -55,6 +58,30 @@ export async function createEntities(uid: string, inputs: { type: EntityType; pa
   guard(); const saved: CoreEntity[] = [];
   for (const input of inputs) saved.push(await createEntity(uid, input.type, input.payload));
   return saved;
+}
+export async function startExecutionSession(uid: string, payload: ExecutionSessionData) {
+  if (entities.some(item => item.type === "executionSession" && (item.payload as ExecutionSessionData).status === "running")) throw new Error("execution_already_running");
+  return createEntity(uid, "executionSession", payload) as Promise<CoreEntity<ExecutionSessionData>>;
+}
+export async function completeExecutionSession(uid: string, session: CoreEntity<ExecutionSessionData>, endedAt: string, completeTask = false) {
+  const current = entities.find(item => item.id === session.id) as CoreEntity<ExecutionSessionData> | undefined;
+  const actualId = executionActualId(session.id);
+  const existingActual = entities.find(item => item.id === actualId) as CoreEntity<ActualData> | undefined;
+  if (current?.payload.status !== "running" && existingActual) return { session: current, actual: existingActual, task: null, created: false };
+  const task = entities.find(item => item.id === current?.payload.taskId) as CoreEntity<TaskData> | undefined;
+  const payloads = completionPayloads(current || session, new Date(endedAt), task);
+  const actual = existingActual || { ...entity(actualId, "actual", payloads.actual), payload: payloads.actual } as CoreEntity<ActualData>;
+  const completed = { ...(current || session), payload: { ...(current || session).payload, status: "completed" as const, endedAt, actualId }, revision: (current || session).revision + 1 };
+  const updatedTask = task ? { ...task, payload: { ...(payloads.nextTask || task.payload), status: completeTask ? "completed" as const : task.payload.status, completedAt: completeTask ? endedAt : task.payload.completedAt }, revision: task.revision + 1 } : null;
+  entities = [...entities.filter(item => item.id !== completed.id && item.id !== actual.id && item.id !== updatedTask?.id), completed, actual, ...(updatedTask ? [updatedTask] : [])]; emit();
+  return { session: completed, actual, task: updatedTask, created: !existingActual };
+}
+export async function recordWakeAndStartMorningFlow(uid: string, now: Date, sleep: CoreEntity<SleepRecordData> | undefined, flow: CoreEntity<RoutineFlowData> | undefined, running: CoreEntity<RoutineRunData> | undefined) {
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const savedSleep = sleep ? await updateEntity(uid, sleep, { ...sleep.payload, actualWakeAt: now.toISOString(), source: "manual" }) as CoreEntity<SleepRecordData> : await createEntity(uid, "sleepRecord", { date, plannedSleepAt: null, plannedWakeAt: null, estimatedSleepAt: null, actualWakeAt: now.toISOString(), source: "manual", confidence: 1 }) as CoreEntity<SleepRecordData>;
+  const existingRun = running || (flow ? entities.find(item => item.id === `routine_run_${date}_${flow.id}`) as CoreEntity<RoutineRunData> | undefined : undefined);
+  const run = existingRun || (flow ? await createEntity(uid, "routineRun", startRoutineRunPayload(flow, now) as unknown as Record<string, unknown>) as CoreEntity<RoutineRunData> : null);
+  return { sleep: savedSleep, run };
 }
 export async function updateEntity(_uid: string, old: CoreEntity, payload: Record<string, unknown>, deleted = false) {
   guard(); const current = entities.find(item => item.id === old.id);

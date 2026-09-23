@@ -1,6 +1,9 @@
 {
   "checks": [
-    "Now shows source-data advice, time flow, routines, and character artwork",
+    "Now chooses one Task and persists a running Execution Session",
+    "Ending the Session creates one linked Actual and recalculates Now",
+    "Now Fixed mode suppresses unrelated Task recommendations",
+    "Morning wake recording starts and restores the after-wake Routine Flow",
     "Routine completion stores its own occurrence and triggers a fairy reaction",
     "Command palette creates a task through the shared command engine",
     "Task edit keeps the ID and advances the revision",
@@ -33,6 +36,8 @@
     "360px Phase 2 pages and editor fit; mobile week switches days and opens linked-task scheduling",
     "Mobile primary controls keep at least 44px tap targets",
     "Task, Inbox, Project, Routine and Money empty states render after data removal",
+    "Now Free mode does not invent work when no action is needed",
+    "Now Wind Down mode protects the configured sleep window",
     "Reduced-motion preference disables animation",
     "360px layout has no horizontal overflow",
     "No uncaught browser errors"

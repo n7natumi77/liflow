@@ -6,7 +6,7 @@ Liflowを自分のPCで起動してテストできる配布版です。ChatGPT W
 
 「今日を整える」では、予定通りのActual作成、実際の時間の入力、やらなかった、不要になった、明日への延期を選べます。予定通りのActual作成と延期はFirestoreトランザクションで処理し、途中までしか保存されない状態を防ぎます。元のPlanは上書きせず履歴として残ります。
 
-設定画面で一日の開始・終了時刻を変更できます。「今」の残り利用可能時間は設定した終了時刻までで計算します。ActualからPlanへの関連付けと、旧`Plan.actualId`が残るデータの互換リンク解除もFirestoreトランザクションで処理します。schema v4では`Actual.planId`が正規参照で、1件のPlanへ複数のActualを記録できます。未整理の時間重複判定は、今後の有効な通常予定だけを対象にします。
+設定画面で一日の開始・終了、案内強度、予定切替・出発バッファ、就寝目標、Wind Down時間を変更できます。「今」は固定予定、締切予約、Direction実績、疲労、Morning Flow、就寝時間から次の行動を1件だけ導出します。ActualからPlanへの関連付けと、旧`Plan.actualId`が残るデータの互換リンク解除もFirestoreトランザクションで処理します。`Actual.planId`が正規参照で、1件のPlanへ複数のActualを記録できます。
 
 ## 必要なもの
 
@@ -40,9 +40,11 @@ Firebase ConsoleではAuthenticationの「メール/パスワード」を有効�
 
 ## Schemaとバックアップ
 
-永続Entityは共通registryで管理され、すべて`schemaVersion`を持ちます。旧データは`v1 → v2 → v3 → v4`の順で段階的に移行します。移行前には`users/{uid}/backups/{backupId}`へ件数・時刻・schemaVersionを記録し、その下へEntity単位のsnapshotを保存します。snapshotの保存完了後にだけmigrationを開始します。設定画面から過去のsnapshotを選んで復元でき、復元直前の状態も自動で別snapshotへ保存します。
+永続Entityは共通registryで管理され、すべて`schemaVersion`を持ちます。旧データは`v1 → v2 → v3 → v4 → v5`の順で段階的に移行します。移行前には`users/{uid}/backups/{backupId}`へ件数・時刻・schemaVersionを記録し、その下へEntity単位のsnapshotを保存します。snapshotの保存完了後にだけmigrationを開始します。設定画面から過去のsnapshotを選んで復元でき、復元直前の状態も自動で別snapshotへ保存します。
 
-schema v4ではTask / Plan / Actualへ任意の`directionId`を追加し、固定IDの初期Direction（学業・専門・進路・生活・世界）を重複なく初期化します。Taskは`nextAction`と`estimatedRemainingMinutes`を保持できます。`recurringActivityRule`、`routineFlow`、`routineRun`、`sleepRecord`、`conditionRecord`も同じEntity registry、revision、tombstone、backupの対象です。既存ProjectとRoutineは推測変換せず、そのまま保持します。
+schema v4ではTask / Plan / Actualへ任意の`directionId`を追加し、固定IDの初期Direction（学業・専門・進路・生活・世界）を重複なく初期化します。Taskは`nextAction`と`estimatedRemainingMinutes`を保持できます。schema v5では永続化される`executionSession`、時間安全設定、編集可能な初期Morning Flowを追加しました。Session終了は決定的なActual IDを用いるFirestore transactionでActual作成と残時間更新をまとめ、二重終了によるActual重複を防ぎます。既存ProjectとRoutineは推測変換せず、そのまま保持します。
+
+Now Engineは`domain/now-engine.ts`、時間・締切予約は`domain/scheduling.ts`、Direction集計は`domain/directions.ts`、実行・Routine Run遷移は`domain/execution.ts`に分離されています。NowDecision自体は保存せず、Entity集合・現在時刻・設定値から決定論的に再計算します。
 
 移行中にEntityの消失、revision競合、未知の新しいschema、種類別件数の減少を検出した場合は自動更新を停止します。旧データを初期化して捨てる処理はありません。バックアップ内のEntityはクライアントから更新・削除できないFirestoreルールです。
 

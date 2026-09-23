@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 import {
   CURRENT_SCHEMA_VERSION,
   DEFAULT_DIRECTIONS,
+  DEFAULT_MORNING_FLOW_ID,
   assertMigrationCandidate,
   assertNoEntityLoss,
   backfillCanonicalActualPlanLinks,
   countEntities,
   createSnapshotMigrationPlan,
   ensureDefaultDirections,
+  ensureDefaultMorningFlow,
   migrateEntity,
   migrateSnapshot,
   type StoredEntity,
@@ -34,7 +36,7 @@ const stored = (
   ...extra,
 });
 
-test("v1 to v2 to v3 to v4 migration remains available", () => {
+test("v1 to v2 to v3 to v4 to v5 migration remains available", () => {
   const legacy = stored("p", "project", { name: "研究" });
   delete legacy.schemaVersion;
   const entity = migrateEntity(legacy);
@@ -53,7 +55,7 @@ test("v3 Task gains only nullable vNext fields without losing legacy links", () 
       status: "open",
     }),
   );
-  assert.equal(entity.schemaVersion, 4);
+  assert.equal(entity.schemaVersion, CURRENT_SCHEMA_VERSION);
   assert.equal(entity.payload.directionId, null);
   assert.equal(entity.payload.nextAction, null);
   assert.equal(entity.payload.estimatedRemainingMinutes, null);
@@ -168,11 +170,21 @@ test("a stable Direction ID collision aborts instead of overwriting an Entity", 
   );
 });
 
+test("the editable morning preset is initialized once and never duplicated", () => {
+  const first = ensureDefaultMorningFlow([], { now: "2026-01-01T00:00:00.000Z" });
+  const second = ensureDefaultMorningFlow(first, { now: "2026-02-01T00:00:00.000Z" });
+  assert.equal(first.length, 1);
+  assert.equal(first[0].id, DEFAULT_MORNING_FLOW_ID);
+  assert.equal(first[0].type, "routineFlow");
+  assert.equal((first[0].payload.steps as unknown[]).length, 6);
+  assert.deepEqual(second, first);
+});
+
 test("migration plan requires a safety backup and becomes idempotent", () => {
   const source = [stored("task", "task", { title: "A", status: "open" })];
   const first = createSnapshotMigrationPlan(source, { now: "2026-01-01T00:00:00.000Z" });
   assert.equal(first.requiresBackup, true);
-  assert.equal(first.addedEntities.length, 5);
+  assert.equal(first.addedEntities.length, 6);
   const second = createSnapshotMigrationPlan(first.entities, { now: "2026-02-01T00:00:00.000Z" });
   assert.equal(second.requiresBackup, false);
   assert.equal(second.addedEntities.length, 0);
@@ -199,7 +211,7 @@ test("migration conflict interrupts instead of overwriting a newer revision", ()
 
 test("an entity already migrated by another device is left alone", () => {
   const original = stored("task", "task", { title: "A" }, 3, { revision: 2 });
-  const migrated = stored("task", "task", { title: "A" }, 4, { revision: 3 });
+  const migrated = stored("task", "task", { title: "A" }, CURRENT_SCHEMA_VERSION, { revision: 3 });
   assert.equal(assertMigrationCandidate(original, migrated), false);
 });
 
@@ -211,7 +223,7 @@ test("newer unknown schema is never reset or reinterpreted", () => {
   );
 });
 
-test("new v4 entity families can be retained without a legacy conversion", () => {
+test("v4 entity families migrate to v5 without payload loss", () => {
   const source = [
     stored("rule", "recurringActivityRule", { title: "授業", active: true }, 4),
     stored("flow", "routineFlow", { name: "起床後", active: true, steps: [] }, 4),
@@ -223,4 +235,16 @@ test("new v4 entity families can be retained without a legacy conversion", () =>
   for (const entity of source) {
     assert.deepEqual(result.find((item) => item.id === entity.id)?.payload, entity.payload);
   }
+});
+
+test("v4 settings gain the Phase 1 safety controls and execution sessions are registered", () => {
+  const settings = migrateEntity(stored("settings", "settings", { calendarView: "week" }, 4));
+  const session = migrateEntity(stored("session", "executionSession", { targetKind: "task", taskId: "task", title: "実行", startedAt: "2026-01-01T00:00:00.000Z" }, 4));
+  assert.equal(settings.payload.guidanceIntensity, "strong");
+  assert.equal(settings.payload.transitionBufferMinutes, 10);
+  assert.equal(settings.payload.departureSafetyBufferMinutes, 10);
+  assert.equal(settings.payload.targetSleepTime, "23:30");
+  assert.equal(settings.payload.windDownMinutes, 45);
+  assert.equal(session.payload.status, "running");
+  assert.equal(session.payload.actualId, null);
 });

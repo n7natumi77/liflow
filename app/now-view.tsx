@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
-import { ArrowRight, CalendarDays, Check, ChevronRight, Clock3, Gem, Inbox, ListTodo, Plus, Repeat2, Sparkles } from "lucide-react";
-import { active, availableMinutes, layoutOverlaps, routineOccurs, unresolved, type CoreEntity, type EntityType, type PlanData, type TaskData, type ActualData, type RoutineData, type RoutineOccurrenceData, type CalendarCategoryData } from "../domain/core";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, CalendarDays, Check, ChevronRight, Clock3, Gem, Inbox, ListTodo, Play, Plus, Repeat2, Sparkles } from "lucide-react";
+import { active, layoutOverlaps, routineOccurs, unresolved, type CoreEntity, type EntityType, type PlanData, type TaskData, type ActualData, type RoutineData, type RoutineOccurrenceData, type CalendarCategoryData, type RoutineFlowData } from "../domain/core";
+import { getNowDecision, type StartAssistReason } from "../domain/now-engine";
 import { FairyCharacter } from "./fairy-character";
 import { dateKey, dayRange, freeRanges, minuteLabel, scheduledPlans } from "./diary-time";
 import type { Capture, CaptureState } from "./diary-types";
@@ -13,36 +14,46 @@ type Props = {
   clock: Date; nowPlan?: CoreEntity<PlanData>; nextPlan?: CoreEntity<PlanData>; plans: CoreEntity<PlanData>[];
   tasks: CoreEntity<TaskData>[]; inboxCount: number; checks: number; dayEnd: string;
   setTab: (tab: string) => void; setModal: (modal: CaptureState) => void;
+  beginExecution: (targetId: string, suggestedMinutes: number | null) => Promise<void>;
+  endExecution: (sessionId: string, completeTask?: boolean) => Promise<void>;
+  recordWake: () => Promise<void>;
+  advanceFlow: (runId: string, stepId: string, outcome: "completed" | "skipped", checkedItemIds?: string[]) => Promise<void>;
+  recordFatigue: () => Promise<void>;
 };
-export default function NowView({ entities, create, update, clock, nowPlan, nextPlan, plans, tasks, checks, dayEnd, setTab, setModal }: Props) {
+export default function NowView({ entities, create, update, clock, plans, tasks, checks, setTab, setModal, beginExecution, endExecution, recordWake, advanceFlow, recordFatigue }: Props) {
   const [busy, setBusy] = useState<string | null>(null), [celebrating, setCelebrating] = useState(false), [notice, setNotice] = useState("");
+  const [assistOpen, setAssistOpen] = useState(false), [assistReason, setAssistReason] = useState<StartAssistReason | null>(null);
+  const [excludedTaskIds, setExcludedTaskIds] = useState<string[]>([]), [checkedItems, setCheckedItems] = useState<string[]>([]);
+  const automaticSteps = useRef(new Set<string>());
   useEffect(() => {
     if (!celebrating) return;
     const timer = setTimeout(() => setCelebrating(false), 2200);
     return () => clearTimeout(timer);
   }, [celebrating]);
-  const free = availableMinutes(scheduledPlans(plans), clock, dayEnd), date = dateKey(clock);
+  const decision = getNowDecision(entities, clock, { assistReason, excludedTaskIds }), date = dateKey(clock);
   const routines = active<RoutineData>(entities, "routine").filter(r => r.payload.active && routineOccurs(r.payload.scheduleRule, clock));
   const occurrences = active<RoutineOccurrenceData>(entities, "routineOccurrence");
   const status = (id: string) => occurrences.find(o => o.payload.routineId === id && o.payload.date === date)?.payload.status;
-  const timed = routines.filter(r => r.payload.preferredTime && status(r.id) !== "done" && status(r.id) !== "skipped").map(r => {
-    const start = new Date(date + "T" + r.payload.preferredTime + ":00");
-    return { routine: r, start, end: new Date(+start + (r.payload.expectedDuration || 30) * 60000) };
-  }).sort((a, b) => +a.start - +b.start);
-  const currentRoutine = timed.find(r => r.start <= clock && clock < r.end), nextRoutine = timed.find(r => r.start > clock);
-  const nextIsRoutine = !!nextRoutine && (!nextPlan || nextRoutine.start < new Date(nextPlan.payload.startAt));
-  const nextStart = nextIsRoutine && nextRoutine ? nextRoutine.start : nextPlan ? new Date(nextPlan.payload.startAt) : null;
-  const nextTitle = nextIsRoutine && nextRoutine ? nextRoutine.routine.payload.title : nextPlan?.payload.title;
-  const contiguous = !nowPlan && !currentRoutine && nextStart ? Math.max(0, Math.floor((+nextStart - +clock) / 60000)) : 0;
   const due = tasks.filter(t => t.payload.status === "open").sort((a, b) => (a.payload.deadline || "9999").localeCompare(b.payload.deadline || "9999")).slice(0, 3);
   const pending = unresolved(entities, clock).slice(0, 2);
-  const fairy = celebrating ? "できたね！ ひとつずつ、この調子。"
-    : contiguous > 0 ? "次の予定まで" + duration(contiguous) + "。ちょっとひと息つく？"
-    : nowPlan ? "「" + nowPlan.payload.title + "」の時間だね。あなたのペースでいこう。"
-    : currentRoutine ? "「" + currentRoutine.routine.payload.title + "」の時間だよ。一緒にやってみよう。"
-    : checks > 0 ? "あとで確認したいことがあるみたい。落ち着いたときに、一緒に整えよう。"
-    : free > 0 ? "今日はあと" + duration(free) + "空いてるよ。何をしようか？"
-    : "今日もおつかれさま。ゆっくり休んでね。";
+  const action = decision.primaryAction;
+  const routineFlow = action?.kind === "routine" ? active<RoutineFlowData>(entities, "routineFlow").find(flow => flow.payload.steps.some(step => step.id === action.stepId)) : null;
+  const routineStep = action?.kind === "routine" ? routineFlow?.payload.steps.find(step => step.id === action.stepId) : null;
+  const elapsed = action?.kind === "session" ? Math.max(0, Math.floor((clock.getTime() - new Date(action.startedAt).getTime()) / 60000)) : 0;
+  const sessionRemaining = action?.kind === "session" && action.suggestedMinutes ? Math.max(0, action.suggestedMinutes - elapsed) : null;
+  const routineElapsed = action?.kind === "routine" && action.startedAt ? Math.max(0, Math.floor((clock.getTime() - new Date(action.startedAt).getTime()) / 60000)) : 0;
+  const routineRemaining = action?.kind === "routine" && action.suggestedMinutes ? action.suggestedMinutes - routineElapsed : null;
+  const fairy = celebrating ? "できたね。今の現実から、次を考え直すね。"
+    : decision.reason === "critical_deadline" ? "これ以上後ろへ回すと厳しいから、今はこれを少し進めよう。"
+    : decision.reason === "tight_deadline" ? "締切までの余裕が少ないよ。今の時間をここに使おう。"
+    : decision.reason === "direction_need" ? "最近この方向の時間が空いてるから、今日はひとつだけ。"
+    : decision.reason === "recovery" ? "疲れているなら、まず短く休もう。責めなくて大丈夫。"
+    : decision.reason === "wind_down" ? "今日はここまで。眠る準備に切り替えよう。"
+    : decision.reason === "free" ? "急ぎのものはないよ。次の予定まで自由時間。"
+    : decision.reason === "running_session" ? `「${action?.title}」を続けよう。`
+    : decision.reason === "morning_routine" ? "支度をひとつずつ進めよう。"
+    : decision.reason === "wake_check" ? "おはよう。起きた時刻だけ記録しよう。"
+    : `今は「${action?.title || "この予定"}」の時間だよ。`;
   const mark = async (r: CoreEntity<RoutineData>) => {
     if (busy) return;
     setBusy(r.id); setNotice("");
@@ -54,22 +65,54 @@ export default function NowView({ entities, create, update, clock, nowPlan, next
     } catch { setNotice("保存できませんでした。同期状態を確認してください。"); }
     finally { setBusy(null); }
   };
+  useEffect(() => {
+    if (action?.kind !== "routine" || action.executionMode !== "automatic") return;
+    const key = `${action.routineRunId}:${action.stepId}`;
+    if (automaticSteps.current.has(key)) return;
+    automaticSteps.current.add(key);
+    void advanceFlow(action.routineRunId, action.stepId, "completed").catch(() => automaticSteps.current.delete(key));
+  }, [action, advanceFlow]);
+  const run = async (key: string, operation: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(key); setNotice("");
+    try { await operation(); setCelebrating(true); setAssistOpen(false); setAssistReason(null); setCheckedItems([]); }
+    catch { setNotice("保存できませんでした。同期状態を確認してください。"); }
+    finally { setBusy(null); }
+  };
+  const chooseAssist = async (reason: StartAssistReason) => {
+    setAssistReason(reason); setAssistOpen(false);
+    if (reason === "tired") await run("fatigue", recordFatigue);
+  };
+  const label = action?.kind === "wake" ? "起床確認" : action?.kind === "session" ? "実行中" : action?.kind === "routine" ? "いまの支度" : action?.kind === "plan" ? "いまの予定" : action?.kind === "rest" ? "回復" : action?.kind === "task" ? "次はこれ" : decision.mode === "windDown" ? "眠る準備" : "自由時間";
   return <div className="diary-now">
     <section className={"diary-hero panel" + (celebrating ? " is-celebrating" : "")} aria-label="今と次の予定">
       <div className="hero-content">
         <div className="hero-clock"><Clock3 size={16} /><time dateTime={clock.toISOString()}>{time(clock)}</time><span>あなたのペースで、今日を。</span></div>
         <div className="focus-sticker">
-          <span className="focus-label"><Gem size={15} />{nowPlan ? "いまの予定" : currentRoutine ? "いまのルーティン" : "いまは、自由な時間"}</span>
-          <h2>{nowPlan?.payload.title || currentRoutine?.routine.payload.title || "今、やりたいことから。"}</h2>
-          <p>{nowPlan ? time(nowPlan.payload.startAt) + " – " + time(nowPlan.payload.endAt) : currentRoutine ? time(currentRoutine.start) + "ごろ" : "ひとつ進めても、少し休んでも大丈夫。"}</p>
-          {nowPlan ? <button className="diary-button primary" onClick={() => setModal({ kind: "actual", planId: nowPlan.id })}><Check size={17} />実績を記録</button>
-            : currentRoutine ? <button className="diary-button primary" disabled={!!busy} onClick={() => void mark(currentRoutine.routine)}><Check size={17} />{busy ? "保存中…" : "実施した"}</button>
-            : <button className="diary-button primary" onClick={() => setModal({ kind: "inbox" })}><Plus size={17} />思いついたことを記録</button>}
+          <span className="focus-label"><Gem size={15} />{label}</span>
+          <h2>{action?.title || (decision.mode === "windDown" ? "今日はここまで" : "急ぎのものはないよ")}</h2>
+          {action?.kind === "session" ? <p>{time(action.startedAt)}から · {sessionRemaining === null ? `経過 ${duration(elapsed)}` : `残り ${duration(sessionRemaining)}`}</p>
+            : action?.kind === "task" || action?.kind === "rest" ? <p>{action.suggestedMinutes}分だけ</p>
+            : action?.kind === "routine" ? <p className={action.executionMode === "pacedTimer" && routineRemaining !== null && routineRemaining <= 2 ? "routine-timer-urgent" : ""}>{action.executionMode === "softTimer" ? `経過 ${routineElapsed}分 / 目安 ${action.suggestedMinutes || "–"}分` : action.executionMode === "pacedTimer" && routineRemaining !== null ? routineRemaining > 0 ? `残り ${routineRemaining}分` : "そろそろ切り上げよう" : action.suggestedMinutes ? `目安 ${action.suggestedMinutes}分` : "終わったら次へ"}</p>
+            : action?.kind === "plan" ? <p>固定予定を優先しています</p>
+            : <p>{decision.mode === "windDown" ? "長い作業は始めず、明日に備えよう。" : "何もしない時間も大切です。"}</p>}
+          {action?.kind === "task" && <button className="diary-button primary now-primary" disabled={!!busy} onClick={() => void run("start", () => beginExecution(action.taskId, action.suggestedMinutes))}><Play size={17} />開始</button>}
+          {action?.kind === "plan" && <button className="diary-button primary now-primary" disabled={!!busy} onClick={() => void run("start", () => beginExecution(action.planId, null))}><Play size={17} />開始</button>}
+          {action?.kind === "wake" && <button className="diary-button primary now-primary" disabled={!!busy} onClick={() => void run("wake", recordWake)}><Check size={17} />起きた</button>}
+          {action?.kind === "session" && <div className="now-session-actions"><button className="diary-button primary" disabled={!!busy} onClick={() => void run("finish", () => endExecution(action.sessionId))}><Check size={17} />終わる</button><button className="diary-button" disabled={!!busy} onClick={() => void run("finish-task", () => endExecution(action.sessionId, true))}>Taskも完了</button><button className="diary-text-button" disabled={!!busy} onClick={() => void run("pause", () => endExecution(action.sessionId))}>いったん止める</button></div>}
+          {action?.kind === "routine" && action.executionMode !== "automatic" && <div className="now-routine-actions">
+            {Boolean(decision.reasonDetails?.urgent) && <strong className="routine-timer-urgent">支度を優先しよう。出発までの余裕が少なくなっています。</strong>}
+            {routineStep?.checklistItems?.map(item => <label className="now-check-item" key={item.id}><input type="checkbox" checked={checkedItems.includes(item.id)} onChange={() => setCheckedItems(old => old.includes(item.id) ? old.filter(id => id !== item.id) : [...old, item.id])}/>{item.title}</label>)}
+            <button className="diary-button primary" disabled={!!busy || (!!routineStep?.checklistItems?.length && checkedItems.length < routineStep.checklistItems.length)} onClick={() => void run("step", () => advanceFlow(action.routineRunId, action.stepId, "completed", checkedItems))}><Check size={17}/>完了</button>
+            <button className="diary-text-button" disabled={!!busy} onClick={() => void run("skip", () => advanceFlow(action.routineRunId, action.stepId, "skipped"))}>スキップ</button>
+          </div>}
+          {(action?.kind === "task" || action?.kind === "plan") && <div className="start-assist"><button className="diary-text-button" onClick={() => setAssistOpen(value => !value)}>今むり</button>{action.kind === "task" && <button className="diary-text-button" onClick={() => setExcludedTaskIds(old => [...old, action.taskId])}>違う</button>}</div>}
+          {assistOpen && <div className="assist-reasons" aria-label="今むりな理由">{[["unknown", "何すればいいかわからない"], ["heavy", "大きすぎる"], ["tired", "疲れた"], ["boring", "つまらない"]].map(([reason, text]) => <button key={reason} onClick={() => void chooseAssist(reason as StartAssistReason)}>{text}</button>)}</div>}
         </div>
-        <div className="hero-next"><span>このあと</span><div><b>{nextStart ? time(nextStart) + (nextIsRoutine ? "ごろ" : "から") : "予定はまだありません"}</b><p>{nextTitle || "空けておいても大丈夫。"}</p></div>
+        <div className="hero-next"><span>このあと</span><div><b>{decision.nextAnchorAt ? time(decision.nextAnchorAt) + "から" : "固定予定はありません"}</b><p>{decision.departureAt ? `推奨出発 ${time(decision.departureAt)}` : decision.usableMinutes !== null ? `安全に使える時間 ${duration(decision.usableMinutes)}` : "空けておいても大丈夫。"}</p></div>
           <button className="diary-icon-button" onClick={() => setTab("today")} aria-label="今日の予定を見る"><ArrowRight size={19} /></button>
         </div>
-        <p className="free-caption"><Clock3 size={14} /><b>{duration(free)}</b><span>{dayEnd}までの空き時間</span></p>
+        <p className="free-caption"><Clock3 size={14} /><b>{duration(decision.usableMinutes || 0)}</b><span>今、安全に使える時間</span></p>
       </div>
       <div className="fairy-companion">
         <div className="fairy-bubble" aria-live="polite">{fairy}</div>

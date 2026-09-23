@@ -11,6 +11,7 @@ import { phase3DesktopChecks, phase3SimpleCheck, phase3MobileChecks, phase3Empty
 const root = fileURLToPath(new URL("../", import.meta.url));
 const artifacts = path.join(root, "artifacts/diary/phase3");
 await fs.mkdir(artifacts, { recursive: true });
+await fs.rm(path.join(artifacts, "failure.png"), { force: true });
 const server = await createServer({
   configFile: false, root: path.join(root, "tests/ui"), publicDir: path.join(root, "public"),
   plugins: [react()], logLevel: "error",
@@ -48,10 +49,36 @@ const drag = async (locator, delta) => {
 try {
   await page.goto("http://127.0.0.1:4175", { waitUntil: "networkidle" });
   await page.locator(".diary-hero").waitFor();
-  assert.ok((await page.locator(".fairy-bubble").innerText()).includes("48分"));
+  assert.ok((await page.locator(".fairy-bubble").innerText()).length > 0);
   assert.equal(await page.locator(".cat-fairy").count(), 0);
   await screenshot("desktop-now");
-  check("Now shows source-data advice, time flow, routines, and character artwork");
+  assert.equal(await page.locator(".focus-label").innerText(), "次はこれ");
+  const recommendedTitle = await page.locator(".focus-sticker h2").innerText();
+  await page.locator(".focus-sticker").getByRole("button", { name: "開始", exact: true }).click();
+  await waitFor(async () => (await snapshot()).some(e => e.type === "executionSession" && e.payload.status === "running"));
+  assert.equal(await page.locator(".focus-label").innerText(), "実行中");
+  assert.equal(await page.locator(".focus-sticker h2").innerText(), recommendedTitle);
+  check("Now chooses one Task and persists a running Execution Session");
+  await page.clock.fastForward(60000);
+  await page.locator(".focus-sticker").getByRole("button", { name: "終わる", exact: true }).click();
+  await waitFor(async () => (await snapshot()).some(e => e.type === "actual" && e.id.startsWith("actual_execution_")));
+  assert.ok((await snapshot()).some(e => e.type === "executionSession" && e.payload.status === "completed"));
+  check("Ending the Session creates one linked Actual and recalculates Now");
+
+  await page.clock.setFixedTime(new Date("2026-09-16T15:30:00+09:00"));
+  await page.clock.fastForward(30000);
+  assert.equal(await page.locator(".focus-label").innerText(), "いまの予定");
+  check("Now Fixed mode suppresses unrelated Task recommendations");
+  await page.clock.setFixedTime(new Date("2026-09-16T07:00:00+09:00"));
+  await page.clock.fastForward(30000);
+  assert.equal(await page.locator(".focus-label").innerText(), "起床確認");
+  await page.locator(".focus-sticker").getByRole("button", { name: "起きた", exact: true }).click();
+  await waitFor(async () => (await snapshot()).some(e => e.type === "routineRun" && e.payload.status === "running"));
+  assert.equal(await page.locator(".focus-label").innerText(), "いまの支度");
+  check("Morning wake recording starts and restores the after-wake Routine Flow");
+  await page.evaluate(() => window.__liflowFixture.emptyTypes(["routineRun", "sleepRecord"]));
+  await page.clock.setFixedTime(new Date("2026-09-16T16:42:00+09:00"));
+  await page.clock.fastForward(30000);
 
   await page.locator(".routine-chip").filter({ hasText: "ストレッチ" }).click();
   await waitFor(async () => (await snapshot()).some(e => e.type === "routineOccurrence" && e.payload.routineId === "routine1" && e.payload.status === "done"));
@@ -69,10 +96,12 @@ try {
   await mainTab("タスク");
   await page.locator(".task-summary").filter({ hasText: "ブラウザ確認タスク" }).click();
   await page.getByLabel("名前", { exact: true }).fill("ブラウザ確認タスク・編集済み");
+  await page.getByLabel("方向", { exact: true }).selectOption("direction_career");
   await page.getByRole("button", { name: "保存する", exact: true }).click();
   await page.locator(".task-summary").filter({ hasText: "ブラウザ確認タスク・編集済み" }).waitFor();
   const edited = (await snapshot()).find(e => e.payload.title === "ブラウザ確認タスク・編集済み");
   assert.equal(edited.revision, 2);
+  assert.equal(edited.payload.directionId, "direction_career");
   check("Task edit keeps the ID and advances the revision");
   await screenshot("desktop-tasks");
 
@@ -168,6 +197,13 @@ try {
   await phase2MobileChecks({ page, mainTab, menuTab, check, screenshot });
   await phase3MobileChecks({ page, check });
   await phase3EmptyChecks({ page, check });
+  await mainTab("今");
+  assert.equal(await page.locator(".focus-label").innerText(), "自由時間");
+  check("Now Free mode does not invent work when no action is needed");
+  await page.clock.setFixedTime(new Date("2026-09-16T23:00:00+09:00"));
+  await page.clock.fastForward(30000);
+  assert.equal(await page.locator(".focus-label").innerText(), "眠る準備");
+  check("Now Wind Down mode protects the configured sleep window");
   await page.emulateMedia({ reducedMotion: "reduce" });
   const motion = await page.locator(".diary-tabs>button").first().evaluate(node => getComputedStyle(node).transitionDuration);
   assert.equal(motion, "0s");

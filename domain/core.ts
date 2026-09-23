@@ -10,6 +10,7 @@ export const ENTITY_TYPES = [
   "routineRun",
   "sleepRecord",
   "conditionRecord",
+  "executionSession",
   "transaction",
   "checkin",
   "calendarCategory",
@@ -168,6 +169,7 @@ export type RoutineFlowStep = {
   executionMode: "automatic" | "checkOnly" | "softTimer" | "pacedTimer" | "checklist";
   estimatedMinutes?: number | null;
   condition?: Record<string, unknown> | null;
+  checklistItems?: { id: string; title: string }[];
 };
 export type RoutineFlowData = {
   name: string;
@@ -185,6 +187,7 @@ export type RoutineRunData = {
     startedAt?: string | null;
     endedAt?: string | null;
     status: "completed" | "skipped" | "pending";
+    checkedItemIds?: string[];
   }[];
 };
 
@@ -209,6 +212,19 @@ export type ConditionRecordData = {
   confidence?: number | null;
 };
 
+export type ExecutionSessionData = {
+  targetKind: "task" | "plan";
+  taskId?: string | null;
+  planId?: string | null;
+  title: string;
+  startedAt: string;
+  endedAt?: string | null;
+  status: "running" | "completed" | "cancelled";
+  suggestedMinutes?: number | null;
+  directionId?: string | null;
+  actualId?: string | null;
+};
+
 export type TransactionData = {
   title: string;
   amount: number;
@@ -231,6 +247,11 @@ export type SettingsData = {
   showTaskDeadlines: boolean;
   dayStart?: string;
   dayEnd?: string;
+  guidanceIntensity?: "strong" | "balanced" | "light";
+  transitionBufferMinutes?: number;
+  departureSafetyBufferMinutes?: number;
+  targetSleepTime?: string | null;
+  windDownMinutes?: number;
 };
 export type ConflictData = {
   targetId: string;

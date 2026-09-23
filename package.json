@@ -13,7 +13,7 @@
     "local": "node scripts/start-local.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test domain/core.test.ts domain/schema.test.ts domain/commands.test.ts tests/ui/diary-time.test.ts",
+    "test": "node --experimental-strip-types --test domain/core.test.ts domain/schema.test.ts domain/commands.test.ts domain/now-engine.test.ts domain/execution.test.ts tests/ui/diary-time.test.ts",
     "discord:bot": "node --experimental-strip-types --env-file-if-exists=.env.discord scripts/discord-bot.ts",
     "db:generate": "drizzle-kit generate",
     "test:ui": "node scripts/diary-smoke.mjs"

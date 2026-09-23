@@ -1,8 +1,9 @@
 'use client';
 import {collection,doc,getDoc,getDocs,onSnapshot,runTransaction,setDoc,writeBatch,type DocumentData} from 'firebase/firestore';
 import {firestore} from './firebase-client';
-import {inheritedDirection,shiftedPlan,type ActualData,type ConflictData,type CoreEntity,type EntityType,type PlanData} from '../domain/core';
+import {inheritedDirection,shiftedPlan,type ActualData,type ConflictData,type CoreEntity,type EntityType,type ExecutionSessionData,type PlanData,type RoutineFlowData,type RoutineRunData,type SleepRecordData,type TaskData} from '../domain/core';
 import {CURRENT_SCHEMA_VERSION,assertMigrationCandidate,countEntities,createSnapshotMigrationPlan,migrateEntity,migrateSnapshot,type StoredEntity} from '../domain/schema';
+import {executionActualId,startRoutineRunPayload} from '../domain/execution';
 
 export type SyncState='接続中'|'同期済み'|'オフライン'|'同期エラー';
 const deviceId=()=>{let id=localStorage.getItem('liflow_device_id_v1');if(!id){id=`device_${crypto.randomUUID()}`;localStorage.setItem('liflow_device_id_v1',id)}return id};
@@ -45,6 +46,50 @@ export async function createEntity(uid:string,type:EntityType,payload:Record<str
 export async function createEntities(uid:string,inputs:{type:EntityType;payload:Record<string,unknown>}[]){
  if(!inputs.length)throw new Error('batch_empty');const now=new Date().toISOString(),by=deviceId(),items:CoreEntity[]=inputs.map(input=>({id:crypto.randomUUID(),type:input.type,payload:input.payload,schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:now,updatedAt:now,updatedBy:by,deletedAt:null}));
  for(let offset=0;offset<items.length;offset+=400){const batch=writeBatch(firestore);for(const entity of items.slice(offset,offset+400))batch.set(doc(firestore,'users',uid,'entities',entity.id),entity);await batch.commit()}return items;
+}
+
+export async function startExecutionSession(uid:string,payload:ExecutionSessionData){
+ const entityCollection=collection(firestore,'users',uid,'entities'),sessionRef=doc(entityCollection),lockRef=doc(firestore,'users',uid,'runtime','execution'),now=new Date().toISOString(),by=deviceId();
+ return runTransaction(firestore,async transaction=>{
+  const lock=await transaction.get(lockRef),lockedSessionId=lock.exists()&&lock.data().status==='running'&&typeof lock.data().sessionId==='string'?lock.data().sessionId:'';
+  const lockedSessionSnapshot=lockedSessionId?await transaction.get(doc(entityCollection,lockedSessionId)):null;
+  if(lockedSessionSnapshot?.exists()){
+   const lockedSession=migrateEntity(entityFromDoc(lockedSessionSnapshot.id,lockedSessionSnapshot.data()));
+   if(lockedSession.type==='executionSession'&&!lockedSession.deletedAt&&(lockedSession.payload as ExecutionSessionData).status==='running')throw new Error('execution_already_running');
+  }
+  const session:CoreEntity<ExecutionSessionData>={id:sessionRef.id,type:'executionSession',payload,schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:now,updatedAt:now,updatedBy:by,deletedAt:null};
+  transaction.set(sessionRef,session);transaction.set(lockRef,{status:'running',sessionId:session.id,updatedAt:now});return session;
+ });
+}
+
+export async function completeExecutionSession(uid:string,session:CoreEntity<ExecutionSessionData>,endedAt:string,completeTask=false){
+ const entityCollection=collection(firestore,'users',uid,'entities'),sessionRef=doc(entityCollection,session.id),actualRef=doc(entityCollection,executionActualId(session.id)),taskRef=session.payload.taskId?doc(entityCollection,session.payload.taskId):null,lockRef=doc(firestore,'users',uid,'runtime','execution'),by=deviceId();
+ return runTransaction(firestore,async transaction=>{
+  const lockSnapshot=await transaction.get(lockRef),sessionSnapshot=await transaction.get(sessionRef),remoteSession=sessionSnapshot.exists()?migrateEntity(entityFromDoc(sessionSnapshot.id,sessionSnapshot.data())) as CoreEntity<ExecutionSessionData>:session;
+  const actualSnapshot=await transaction.get(actualRef);
+  const taskSnapshot=taskRef?await transaction.get(taskRef):null;
+  if(remoteSession.payload.status!=='running'){
+   if(!actualSnapshot.exists())throw new Error('execution_actual_missing');
+   if(lockSnapshot.exists()&&lockSnapshot.data().sessionId===session.id)transaction.set(lockRef,{status:'completed',sessionId:null,updatedAt:endedAt});return {session:remoteSession,actual:migrateEntity(entityFromDoc(actualSnapshot.id,actualSnapshot.data())) as CoreEntity<ActualData>,task:taskSnapshot?.exists()?migrateEntity(entityFromDoc(taskSnapshot.id,taskSnapshot.data())) as CoreEntity<TaskData>:null,created:false};
+  }
+  if(remoteSession.revision!==session.revision)throw new Error('revision_conflict');
+  const finish=new Date(endedAt),start=new Date(remoteSession.payload.startedAt);if(!Number.isFinite(+finish)||finish<=start)throw new Error('invalid_execution_range');
+  const elapsed=Math.max(1,Math.floor((+finish-+start)/60000)),remoteTask=taskSnapshot?.exists()?migrateEntity(entityFromDoc(taskSnapshot.id,taskSnapshot.data())) as CoreEntity<TaskData>:null;
+  const actual:CoreEntity<ActualData>={id:actualRef.id,type:'actual',payload:{title:remoteSession.payload.title,taskId:remoteSession.payload.taskId||null,planId:remoteSession.payload.planId||null,projectId:remoteTask?.payload.projectId||null,calendarCategoryId:remoteTask?.payload.calendarCategoryId||null,directionId:inheritedDirection(remoteSession.payload.directionId,remoteTask?.payload.directionId),startAt:remoteSession.payload.startedAt,endAt:finish.toISOString(),type:remoteSession.payload.targetKind,note:''},schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:finish.toISOString(),updatedAt:finish.toISOString(),updatedBy:by,deletedAt:null};
+  const completed:CoreEntity<ExecutionSessionData>={...remoteSession,payload:{...remoteSession.payload,status:'completed',endedAt:finish.toISOString(),actualId:actual.id},revision:remoteSession.revision+1,updatedAt:finish.toISOString(),updatedBy:by};
+  let updatedTask:CoreEntity<TaskData>|null=remoteTask;
+  if(remoteTask&&(typeof remoteTask.payload.estimatedRemainingMinutes==='number'||completeTask))updatedTask={...remoteTask,payload:{...remoteTask.payload,estimatedRemainingMinutes:typeof remoteTask.payload.estimatedRemainingMinutes==='number'?Math.max(0,remoteTask.payload.estimatedRemainingMinutes-elapsed):null,status:completeTask?'completed':remoteTask.payload.status,completedAt:completeTask?finish.toISOString():remoteTask.payload.completedAt||null},revision:remoteTask.revision+1,updatedAt:finish.toISOString(),updatedBy:by};
+  transaction.set(actualRef,actual);transaction.set(sessionRef,completed);transaction.set(lockRef,{status:'completed',sessionId:null,updatedAt:finish.toISOString()});if(taskRef&&updatedTask!==remoteTask&&updatedTask)transaction.set(taskRef,updatedTask);
+  return {session:completed,actual,task:updatedTask,created:true};
+ });
+}
+
+export async function recordWakeAndStartMorningFlow(uid:string,now:Date,sleep:CoreEntity<SleepRecordData>|undefined,flow:CoreEntity<RoutineFlowData>|undefined,running:CoreEntity<RoutineRunData>|undefined){
+ const entityCollection=collection(firestore,'users',uid,'entities'),pad=(value:number)=>String(value).padStart(2,'0'),date=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`,sleepRef=doc(entityCollection,sleep?.id||`sleep_${date}`),runRef=flow&&!running?doc(entityCollection,`routine_run_${date}_${flow.id}`):null,by=deviceId();
+ return runTransaction(firestore,async transaction=>{const sleepSnapshot=await transaction.get(sleepRef),runSnapshot=runRef?await transaction.get(runRef):null,currentSleep=sleepSnapshot.exists()?migrateEntity(entityFromDoc(sleepSnapshot.id,sleepSnapshot.data())) as CoreEntity<SleepRecordData>:sleep;
+  const wakeAt=now.toISOString(),savedSleep:CoreEntity<SleepRecordData>=currentSleep?{...currentSleep,payload:{...currentSleep.payload,date,actualWakeAt:wakeAt,source:'manual'},revision:currentSleep.revision+1,updatedAt:wakeAt,updatedBy:by}:{id:sleepRef.id,type:'sleepRecord',payload:{date,plannedSleepAt:null,plannedWakeAt:null,estimatedSleepAt:null,actualWakeAt:wakeAt,source:'manual',confidence:1},schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:wakeAt,updatedAt:wakeAt,updatedBy:by,deletedAt:null};
+  let savedRun:CoreEntity<RoutineRunData>|null=running||null;if(runRef&&flow){savedRun=runSnapshot?.exists()?migrateEntity(entityFromDoc(runSnapshot.id,runSnapshot.data())) as CoreEntity<RoutineRunData>:{id:runRef.id,type:'routineRun',payload:startRoutineRunPayload(flow,now),schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:wakeAt,updatedAt:wakeAt,updatedBy:by,deletedAt:null};if(!runSnapshot?.exists())transaction.set(runRef,savedRun)}transaction.set(sleepRef,savedSleep);return {sleep:savedSleep,run:savedRun};
+ });
 }
 
 export async function updateEntity(uid:string,entity:CoreEntity,payload:Record<string,unknown>,deleted=false){

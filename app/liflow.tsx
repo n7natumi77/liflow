@@ -19,7 +19,6 @@ import {
 import {
   active,
   inheritedCategory,
-  inheritedDirection,
   unresolved,
   validTimeRange,
   wouldCreateCycle,
@@ -32,6 +31,11 @@ import {
   type CalendarCategoryData,
   type ProjectData,
   type SettingsData,
+  type DirectionData,
+  type ExecutionSessionData,
+  type RoutineFlowData,
+  type RoutineRunData,
+  type SleepRecordData,
   type EntityType,
 } from "../domain/core";
 import CalendarView from "./calendar-view";
@@ -47,14 +51,17 @@ import { MoneyView, ProjectsView, RoutinesView } from "./life-sections";
 import {
   createEntity,
   createEntities,
+  completeExecutionSession,
   deleteActualAndUnlinkPlan,
   listBackups,
   postponePlan,
   prepareUserData,
   recordActualForPlan,
   recordPlanAsActual,
+  recordWakeAndStartMorningFlow,
   resolveConflict,
   restoreBackup,
+  startExecutionSession,
   subscribeEntities,
   updateEntity,
   type BackupSummary,
@@ -62,6 +69,7 @@ import {
 } from "./firebase-store";
 import { executeCommandBatch, parseCommandBatch } from "../domain/commands";
 import { sendToDiscord } from "./discord-client";
+import { createExecutionSessionPayload, advanceRoutineRun } from "../domain/execution";
 
 const nav = [
   ["now", "今", Home],
@@ -309,10 +317,51 @@ function LiflowApp({
     }
     await update(entity, entity.payload, true);
   };
+  const beginExecution = async (targetId: string, suggestedMinutes: number | null) => {
+    if (active<ExecutionSessionData>(entities, "executionSession").some(item => item.payload.status === "running")) return;
+    const target = entities.find(item => item.id === targetId);
+    if (!target || (target.type !== "task" && target.type !== "plan")) return;
+    const planTarget = target.type === "plan" ? target as CoreEntity<PlanData> : null;
+    const linkedTask = tasks.find(item => item.id === (target.type === "task" ? target.id : planTarget?.payload.taskId));
+    const saved = await startExecutionSession(userId, createExecutionSessionPayload(target as CoreEntity<TaskData> | CoreEntity<PlanData>, new Date(), suggestedMinutes, linkedTask));
+    setEntities(value => [...value.filter(item => item.id !== saved.id), saved]);
+  };
+  const endExecution = async (sessionId: string, completeTask = false) => {
+    const session = entities.find(item => item.id === sessionId && item.type === "executionSession") as CoreEntity<ExecutionSessionData> | undefined;
+    if (!session) return;
+    const result = await completeExecutionSession(userId, session, new Date().toISOString(), completeTask);
+    setEntities(value => [
+      ...value.filter(item => ![result.session.id, result.actual.id, result.task?.id].filter(Boolean).includes(item.id)),
+      result.session,
+      result.actual,
+      ...(result.task ? [result.task] : []),
+    ]);
+  };
+  const recordWake = async () => {
+    const now = new Date(), date = localDate(now);
+    const sleep = active<SleepRecordData>(entities, "sleepRecord").find(item => item.payload.date === date);
+    const flow = active<RoutineFlowData>(entities, "routineFlow").find(item => item.payload.active && item.payload.trigger.type === "afterWake");
+    const running = active<RoutineRunData>(entities, "routineRun").find(item => item.payload.status === "running");
+    const result = await recordWakeAndStartMorningFlow(userId, now, sleep, flow, running);
+    setEntities(value => [...value.filter(item => item.id !== result.sleep.id && item.id !== result.run?.id), result.sleep, ...(result.run ? [result.run] : [])]);
+  };
+  const advanceFlow = async (runId: string, stepId: string, outcome: "completed" | "skipped", checkedItemIds: string[] = []) => {
+    const run = entities.find(item => item.id === runId && item.type === "routineRun") as CoreEntity<RoutineRunData> | undefined;
+    const flow = run ? active<RoutineFlowData>(entities, "routineFlow").find(item => item.id === run.payload.routineFlowId) : undefined;
+    if (!run || !flow) return;
+    const saved = await updateEntity(userId, run, advanceRoutineRun(flow, run, stepId, outcome, new Date(), checkedItemIds) as unknown as Record<string, unknown>);
+    setEntities(value => value.map(item => item.id === saved.id ? saved : item));
+  };
+  const recordFatigue = async () => {
+    const now = new Date();
+    const saved = await createEntity(userId, "conditionRecord", { recordedAt: now.toISOString(), date: localDate(now), energyLevel: "low", fatigue: 3, mood: null, note: "今むり：疲れた", source: "manual", confidence: 1 });
+    setEntities(value => [...value, saved]);
+  };
   const tasks = active<TaskData>(entities, "task");
   const plans = active<PlanData>(entities, "plan");
   const inbox = active<InboxData>(entities, "inbox");
   const categories = active<CalendarCategoryData>(entities, "calendarCategory");
+  const directions = active<DirectionData>(entities, "direction");
   const projects = active<ProjectData>(entities, "project");
   const settings = active<SettingsData>(entities, "settings")[0];
   const conflicts = active<ConflictData>(entities, "conflict").filter(
@@ -382,6 +431,11 @@ function LiflowApp({
                 dayEnd={settings?.payload.dayEnd || "23:00"}
                 setTab={setTab}
                 setModal={setModal}
+                beginExecution={beginExecution}
+                endExecution={endExecution}
+                recordWake={recordWake}
+                advanceFlow={advanceFlow}
+                recordFatigue={recordFatigue}
               />
             )}
             {tab === "today" && (
@@ -508,6 +562,7 @@ function LiflowApp({
           plans={plans}
           categories={categories}
           projects={projects}
+          directions={directions}
           close={() => setModal(null)}
           create={create}
           createLinkedActual={createLinkedActual}
@@ -658,6 +713,11 @@ export function SettingsView({
 }) {
   const [start, setStart] = useState(settings?.payload.dayStart || "07:00"),
     [end, setEnd] = useState(settings?.payload.dayEnd || "23:00"),
+    [guidanceIntensity, setGuidanceIntensity] = useState(settings?.payload.guidanceIntensity || "strong"),
+    [transitionBuffer, setTransitionBuffer] = useState(String(settings?.payload.transitionBufferMinutes ?? 10)),
+    [departureBuffer, setDepartureBuffer] = useState(String(settings?.payload.departureSafetyBufferMinutes ?? 10)),
+    [targetSleep, setTargetSleep] = useState(settings?.payload.targetSleepTime || "23:30"),
+    [windDown, setWindDown] = useState(String(settings?.payload.windDownMinutes ?? 45)),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
     [backups, setBackups] = useState<BackupSummary[]>([]),
@@ -698,6 +758,11 @@ export function SettingsView({
       showTaskDeadlines: settings?.payload.showTaskDeadlines ?? true,
       dayStart: start,
       dayEnd: end,
+      guidanceIntensity,
+      transitionBufferMinutes: Math.max(0, Number(transitionBuffer) || 0),
+      departureSafetyBufferMinutes: Math.max(0, Number(departureBuffer) || 0),
+      targetSleepTime: targetSleep || null,
+      windDownMinutes: Math.max(0, Number(windDown) || 0),
     };
     try {
       if (settings) await update(settings, payload);
@@ -807,6 +872,13 @@ export function SettingsView({
               onChange={(e) => setEnd(e.target.value)}
             />
           </label>
+        </div>
+        <div className="form-pair">
+          <label>案内の強さ<select value={guidanceIntensity} onChange={event => setGuidanceIntensity(event.target.value as NonNullable<SettingsData["guidanceIntensity"]>)}><option value="strong">強め（1つ決める）</option><option value="balanced">バランス</option><option value="light">軽め</option></select></label>
+          <label>切替バッファ（分）<input type="number" min="0" step="1" value={transitionBuffer} onChange={event => setTransitionBuffer(event.target.value)} /></label>
+          <label>出発安全バッファ（分）<input type="number" min="0" step="1" value={departureBuffer} onChange={event => setDepartureBuffer(event.target.value)} /></label>
+          <label>就寝目標<input type="time" value={targetSleep} onChange={event => setTargetSleep(event.target.value)} /></label>
+          <label>Wind Down（分）<input type="number" min="0" step="1" value={windDown} onChange={event => setWindDown(event.target.value)} /></label>
         </div>
         {message && (
           <p
@@ -927,6 +999,7 @@ export function CaptureModal({
   plans,
   categories,
   projects,
+  directions,
   close,
   create,
   createLinkedActual,
@@ -939,6 +1012,7 @@ export function CaptureModal({
   plans: CoreEntity<PlanData>[];
   categories: CoreEntity<CalendarCategoryData>[];
   projects: CoreEntity<ProjectData>[];
+  directions: CoreEntity<DirectionData>[];
   close: () => void;
   create: (t: EntityType, p: Record<string, unknown>) => Promise<void>;
   createLinkedActual: (
@@ -1014,6 +1088,13 @@ export function CaptureModal({
           "",
       ),
     ),
+    [directionId, setDirectionId] = useState(
+      typeof editingPayload.directionId === "string" ? editingPayload.directionId : "",
+    ),
+    [remainingEstimate, setRemainingEstimate] = useState(
+      typeof task?.payload.estimatedRemainingMinutes === "number" ? String(task.payload.estimatedRemainingMinutes) : "",
+    ),
+    [nextActionTitle, setNextActionTitle] = useState(task?.payload.nextAction?.title || ""),
     [planType, setPlanType] = useState<PlanData["type"]>(
       (editingPayload.type as PlanData["type"]) ||
         plan?.payload.type ||
@@ -1068,9 +1149,9 @@ export function CaptureModal({
           description: task?.payload.description || "",
           deadline: due ? task?.payload.deadline && due === localDate(new Date(task.payload.deadline)) ? task.payload.deadline : toIso(due, "23:59") : null,
           estimateMinutes: task?.payload.estimateMinutes || null,
-          estimatedRemainingMinutes: task?.payload.estimatedRemainingMinutes ?? null,
-          nextAction: task?.payload.nextAction ?? null,
-          directionId: task?.payload.directionId ?? null,
+          estimatedRemainingMinutes: remainingEstimate ? Number(remainingEstimate) : null,
+          nextAction: nextActionTitle.trim() ? { ...(task?.payload.nextAction || {}), title: nextActionTitle.trim(), generatedBy: "manual" } : null,
+          directionId: directionId || null,
           projectId: projectId || null,
           parentTaskId: parentTaskId || null,
           calendarCategoryId: effectiveCategory,
@@ -1084,7 +1165,7 @@ export function CaptureModal({
           taskId: modal.taskId || plan?.payload.taskId || null,
           projectId: projectId || null,
           calendarCategoryId: effectiveCategory,
-          directionId: inheritedDirection(plan?.payload.directionId, task?.payload.directionId),
+          directionId: directionId || null,
           startAt: allDay ? originalAllDay && startValue && date === localDate(new Date(startValue)) ? startValue : toIso(date, "00:00") : preserveTime(date, start, startValue),
           endAt: allDay ? originalAllDay && endValue && endDate === inclusiveEndDay(endValue) ? endValue : endOfDay(endDate) : preserveTime(endDate, end, endValue),
           type: planType,
@@ -1102,11 +1183,7 @@ export function CaptureModal({
           planId: String(editingPayload.planId || modal.planId || "") || null,
           projectId: projectId || null,
           calendarCategoryId: effectiveCategory,
-          directionId: inheritedDirection(
-            typeof editingPayload.directionId === "string" ? editingPayload.directionId : null,
-            plan?.payload.directionId,
-            task?.payload.directionId,
-          ),
+          directionId: directionId || null,
           startAt: preserveTime(date, start, startValue),
           endAt: preserveTime(endDate, end, endValue),
           type: String(editingPayload.type || plan?.payload.type || planType),
@@ -1191,6 +1268,20 @@ export function CaptureModal({
             </label>
           </div>
         )}
+        {kind !== "inbox" && (
+          <label>
+            方向
+            <select aria-label="方向" value={directionId} onChange={(event) => setDirectionId(event.target.value)}>
+              <option value="">未指定</option>
+              {directions.filter(item => item.payload.active || item.id === directionId).sort((a, b) => a.payload.sortOrder - b.payload.sortOrder).map(item => (
+                <option key={item.id} value={item.id}>{item.payload.name}</option>
+              ))}
+            </select>
+            {!directionId && task?.payload.directionId && kind !== "task" && (
+              <small className="field-hint">{directions.find(item => item.id === task.payload.directionId)?.payload.name || "Taskの方向"}（Taskから継承）</small>
+            )}
+          </label>
+        )}
         {kind === "task" && (
           <>
             <label>
@@ -1215,6 +1306,10 @@ export function CaptureModal({
                 onChange={(e) => setDue(e.target.value)}
               />
             </label>
+            <div className="form-pair">
+              <label>残り見積（分・任意）<input type="number" min="0" step="1" inputMode="numeric" value={remainingEstimate} onChange={event => setRemainingEstimate(event.target.value)} /></label>
+              <label>次の一手（任意）<input value={nextActionTitle} onChange={event => setNextActionTitle(event.target.value)} placeholder="まず何をする？" /></label>
+            </div>
           </>
         )}
         {kind === "plan" && (
