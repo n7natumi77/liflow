@@ -1,0 +1,205 @@
+/* Phase 3 visual and interaction finish. This layer does not affect entity data. */
+.diary-theme{
+  --pearl-paper:url("/themes/magical-diary/pearl-paper.svg");
+  --ribbon-divider:url("/themes/magical-diary/ribbon-divider.svg");
+  --memo-corner:url("/themes/magical-diary/memo-corner.svg");
+  --ledger-flourish:url("/themes/magical-diary/ledger-flourish.svg");
+  --paper-line:color-mix(in srgb,var(--line) 72%,transparent);
+}
+.diary-theme .diary-main{
+  background-image:var(--pearl-paper),var(--surface);
+  background-size:420px 420px,auto;
+  background-blend-mode:soft-light,normal;
+}
+.diary-page{min-width:0;animation:page-settle 260ms cubic-bezier(.2,.8,.25,1) both}
+@keyframes page-settle{from{opacity:.25;transform:translateY(7px)}to{opacity:1;transform:none}}
+.diary-main>header h1::after{
+  content:"";display:block;width:min(210px,36vw);height:13px;margin-top:3px;
+  background:var(--ribbon-divider) center/100% 13px no-repeat;opacity:calc(var(--ornament-opacity)*.75)
+}
+.diary-theme .diary-button,.diary-theme .capture,.diary-theme .command-trigger{
+  transition:transform var(--motion-fast),box-shadow var(--motion-fast),filter var(--motion-fast)
+}
+.diary-theme :is(.diary-button,.capture,.command-trigger):hover:not(:disabled){transform:translateY(-1px);filter:saturate(1.05)}
+.diary-theme :is(.diary-button,.capture,.command-trigger):active:not(:disabled){transform:translateY(1px);box-shadow:inset 0 2px 4px #6d476622}
+.diary-theme input[type="checkbox"]{
+  appearance:none;width:18px;height:18px;display:inline-grid;place-content:center;flex:none;margin:0;
+  border:1.5px solid color-mix(in srgb,var(--purple) 55%,var(--line));border-radius:5px;background:var(--paper);
+  box-shadow:inset 0 1px white,0 1px 2px #74526e18;transition:background var(--motion-fast),transform var(--motion-fast)
+}
+.diary-theme input[type="checkbox"]::before{content:"";width:9px;height:5px;border-left:2px solid white;border-bottom:2px solid white;transform:rotate(-45deg) scale(0);transition:transform var(--motion-fast)}
+.diary-theme input[type="checkbox"]:checked{background:var(--purple);border-color:var(--purple)}
+.diary-theme input[type="checkbox"]:checked::before{transform:rotate(-45deg) scale(1)}
+
+/* The primary tabs read as the index controls on a pocket diary. */
+.diary-tabs{position:relative;isolation:isolate}
+.diary-tabs::before,.diary-tabs::after{content:"";position:absolute;top:50%;width:5px;height:5px;border-radius:50%;background:#fff;box-shadow:inset 0 1px 2px #74526e55;opacity:var(--ornament-opacity)}
+.diary-tabs::before{left:7px}.diary-tabs::after{right:7px}
+.diary-tabs>button{position:relative;transition:transform var(--motion-fast),box-shadow var(--motion-fast),background var(--motion-fast)}
+.diary-tabs>button.active{transform:translateY(-3px);box-shadow:0 4px 0 color-mix(in srgb,var(--pink) 24%,var(--line)),0 7px 12px #77516f18}
+.diary-tabs>button.active::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;height:2px;border-radius:4px;background:linear-gradient(90deg,transparent,var(--pink),transparent)}
+.diary-tabs>button:hover:not(.active){transform:translateY(-1px)}
+
+/* Shared notebook details */
+.notebook{position:relative;isolation:isolate}
+.notebook::after{content:"";position:absolute;inset:7px;z-index:-1;border:1px solid color-mix(in srgb,var(--line) 50%,transparent);border-radius:calc(var(--diary-radius) - 5px);pointer-events:none;opacity:var(--ornament-opacity)}
+.notebook-heading{position:relative;padding-bottom:18px}
+.notebook-heading::after{content:"";position:absolute;left:0;right:0;bottom:0;height:16px;background:var(--ribbon-divider) center/100% 16px no-repeat;opacity:calc(var(--ornament-opacity)*.8)}
+.notebook-empty{position:relative;background:color-mix(in srgb,var(--paper) 72%,transparent);border:1px dashed var(--line);border-radius:12px}
+.notebook-empty::before,.notebook-empty::after{content:"✦";position:absolute;color:var(--purple);opacity:calc(var(--ornament-opacity)*.45);font-size:13px}
+.notebook-empty::before{left:12%;top:25%}.notebook-empty::after{right:12%;bottom:25%;font-size:9px}
+
+/* Tasks: a ruled checklist/index page. */
+.tasks-notebook{background-color:#fffafd;background-image:linear-gradient(90deg,transparent 0 40px,#efbcd233 40px 41px,transparent 41px),repeating-linear-gradient(0deg,transparent 0 43px,var(--paper-line) 43px 44px),var(--pearl-paper);background-size:auto,auto,360px}
+.tasks-notebook::before{content:"";position:absolute;left:17px;top:126px;bottom:24px;width:8px;background:radial-gradient(circle,#d7bfd2 0 2px,#fff 2.5px 3.5px,transparent 4px) center top/8px 39px repeat-y;opacity:var(--ornament-opacity)}
+.task-ledger{margin-left:17px;border-radius:3px 13px 13px 3px;border-left:3px double #dba8c5;background:color-mix(in srgb,var(--paper) 82%,transparent);box-shadow:4px 5px 14px #76536e0d}
+.task-entry{min-height:62px;border-bottom-color:var(--paper-line);background:transparent}
+.task-entry:hover{background:color-mix(in srgb,var(--pink2) 34%,transparent)}
+.task-entry.is-complete{background:color-mix(in srgb,var(--tab-surface) 42%,transparent)}
+.task-entry.is-complete::after{content:"済";position:absolute;right:47px;color:var(--pink);border:1px solid currentColor;border-radius:50%;padding:2px;font-size:9px;transform:rotate(-9deg);opacity:.68}
+.task-entry{position:relative}
+.task-entry .check{border-radius:50%;box-shadow:inset 0 1px white,0 1px 2px #72536e24}
+.task-summary b{font-family:var(--font-dialogue,var(--font-ui));letter-spacing:.01em}
+
+/* Inbox: loose notes collected in a shallow sorting tray. */
+.inbox-notebook{overflow:hidden;background-color:#f8eef5;background-image:linear-gradient(115deg,#fff9fdcc,#eee6f6aa),var(--pearl-paper);box-shadow:inset 0 -10px 20px #8b617017,var(--shadow)}
+.inbox-notebook::before{content:"";position:absolute;left:5px;right:5px;bottom:5px;height:18px;border:1px solid #d6b5ca;border-top:0;border-radius:0 0 15px 15px;box-shadow:inset 0 -6px 9px #a77b9120;opacity:var(--ornament-opacity)}
+.reconcile-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;padding:16px 15px 19px;margin-top:20px;border:1px solid color-mix(in srgb,var(--line) 80%,transparent);border-radius:8px 8px 17px 17px;background:#d8bfd026;box-shadow:inset 0 3px 9px #7a586d0e}
+.reconcile-group-heading{grid-column:1/-1}
+.reconcile-card{margin:0;min-width:0;border-radius:4px 6px 9px 5px;border-left-width:3px;padding:20px 17px;background-color:#fffdf8;background-image:var(--memo-corner),repeating-linear-gradient(0deg,transparent 0 27px,#eadce344 27px 28px);background-position:right top,left top;background-size:36px 36px,auto;background-repeat:no-repeat,repeat;box-shadow:1px 3px 7px #6e4f6218;transform:rotate(-.25deg);transition:transform var(--motion-fast),box-shadow var(--motion-fast)}
+.reconcile-card:nth-of-type(even){transform:rotate(.35deg);background-color:#fffaff}
+.reconcile-card:hover{transform:rotate(0) translateY(-2px);box-shadow:2px 6px 12px #6e4f6224}
+.reconcile-card.kind-plan{border-left-color:#a58bc6}.reconcile-card.kind-task{border-left-color:#dc8eb5}.reconcile-card.kind-inbox{border-left-color:#79aebe}.reconcile-card.kind-conflict{border-left-color:#db997a}.reconcile-card.kind-transaction{border-left-color:#90a877}
+.reconcile-copy{padding-right:15px}.reconcile-actions{align-items:center}
+
+/* Projects: a ring binder holding folder tabs and nested dividers. */
+.projects-notebook{padding-left:48px;background-color:#fbf7fb;background-image:linear-gradient(90deg,#ad8dbf 0 31px,#e3cade 31px 34px,transparent 34px),var(--pearl-paper);background-size:auto,380px}
+.projects-notebook::before{content:"";position:absolute;left:12px;top:120px;bottom:30px;width:13px;background:radial-gradient(ellipse,#fff 0 3px,#745779 3.5px 4.5px,#ccb5ce 5px 6px,transparent 6.5px) center top/13px 58px repeat-y;opacity:var(--ornament-opacity)}
+.project-tree{gap:18px}
+.project-branch{position:relative}
+.project-branch .project-branch{border-left:1px solid #c9a9c5;padding-left:22px}
+.project-branch .project-branch::before{content:"";position:absolute;left:-1px;top:27px;width:18px;border-top:1px solid #c9a9c5}
+.project-card{position:relative;border-radius:6px 14px 14px 7px;border-top-width:3px;box-shadow:3px 5px 12px #6f506716;background:linear-gradient(105deg,#fffdfd,#fff9fc)}
+.project-card::before{content:"";position:absolute;right:22px;top:-12px;width:78px;height:12px;border:1px solid var(--entry-color);border-bottom:0;border-radius:8px 8px 0 0;background:color-mix(in srgb,var(--entry-color) 18%,var(--paper));opacity:var(--ornament-opacity)}
+.project-card:hover{box-shadow:4px 8px 16px #6f506720}
+.project-folder{border-radius:4px 11px 11px 4px;box-shadow:inset 0 1px white}
+.project-progress progress{height:8px;border:1px solid color-mix(in srgb,var(--line) 80%,transparent)}
+
+/* Routines: perforated stamp sheet. Completed items receive a physical ink mark. */
+.routines-notebook{background-color:#fffafc;background-image:repeating-linear-gradient(90deg,transparent 0 79px,#ead9e655 79px 80px),repeating-linear-gradient(0deg,transparent 0 79px,#ead9e655 79px 80px),var(--pearl-paper);background-size:auto,auto,360px}
+.routine-day-summary{border-radius:5px;border-style:double;border-width:3px;background:color-mix(in srgb,var(--tab-surface) 74%,transparent)}
+.routine-list{gap:0;border:1px dashed #cdb2c7;border-radius:5px;overflow:hidden;background:#fffafdcc}
+.routine-card{position:relative;border:0;border-right:1px dashed #cdb2c7;border-bottom:1px dashed #cdb2c7;border-radius:0;background:transparent;min-height:195px}
+.routine-card:nth-child(even){border-right:0}.routine-card.done{background:color-mix(in srgb,var(--pink2) 24%,transparent)}
+.routine-stamp{position:relative;width:47px;height:47px;border:2px solid color-mix(in srgb,var(--purple) 55%,var(--line));border-radius:50%;background:transparent;box-shadow:inset 0 0 0 3px #fff,0 1px 2px #75556e24}
+.routine-card.done .routine-stamp{background:transparent;color:var(--pink);border-color:var(--pink);box-shadow:inset 0 0 0 3px #fff,0 0 0 1px color-mix(in srgb,var(--pink) 50%,transparent);transform:rotate(-8deg);animation:stamp-land 340ms cubic-bezier(.2,1.6,.5,1) both}
+.routine-card.done .routine-stamp::after{content:"DONE";position:absolute;bottom:-9px;font:700 7px var(--font-data);letter-spacing:.08em;background:#fff;padding:0 2px;color:var(--pink)}
+.routine-card.off-day{background:#f5f1f488}.routine-card.off-day .routine-stamp{border-style:dashed;box-shadow:none}
+@keyframes stamp-land{0%{transform:scale(1.45) rotate(-15deg);opacity:.2}70%{transform:scale(.94) rotate(-7deg)}100%{transform:scale(1) rotate(-8deg);opacity:1}}
+.routine-state{border:1px solid var(--line);border-radius:3px;background:#fffafd}
+
+/* Money: an open household ledger with clear numerical columns. */
+.money-notebook{background-color:#fffdf7;background-image:linear-gradient(90deg,transparent 0 58%,#e2b7c34f 58% calc(58% + 1px),transparent calc(58% + 1px)),repeating-linear-gradient(0deg,transparent 0 34px,#e3d6cc66 34px 35px),var(--pearl-paper);background-size:auto,auto,420px}
+.money-period{padding-bottom:12px;border-bottom:3px double #d9bdca}
+.money-overview{position:relative;grid-template-columns:repeat(3,1fr);gap:0;border-top:2px solid var(--ink);border-bottom:3px double var(--ink);background:#fffdf7d9}
+.money-overview::after{content:"";position:absolute;left:2%;right:2%;bottom:-26px;height:25px;background:var(--ledger-flourish) center/100% 25px no-repeat;opacity:calc(var(--ornament-opacity)*.65);pointer-events:none}
+.money-overview>div,.money-overview>div.expense,.money-overview>div.income{border:0;border-right:1px solid #ddcbd0;border-radius:0;background:transparent;padding:18px 20px}.money-overview>div:last-child{border-right:0}
+.money-overview b{font-size:26px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.money-expected{margin-top:28px;border:0;border-bottom:1px solid #ddcbd0}
+.money-ledger{padding:8px 12px 0;border-left:1px solid #e0c6cf;border-right:1px solid #e0c6cf;background:#fffefa8f}
+.money-day>h3{border-bottom:2px double #d7c3c8;text-transform:none}
+.transaction-entry{border-radius:0;border-bottom-color:#e4d6d2;padding-inline:9px}
+.transaction-entry:hover{background:#faedf240}
+.transaction-entry>strong{min-width:112px;text-align:right;font-variant-numeric:tabular-nums}
+.transaction-icon{border-radius:50%;border:1px solid var(--line);background:#fff}
+
+/* Calendar family: three pages from the same diary, each with its own density. */
+.calendar-shell{position:relative}
+.calendar-toolbar{border:1px solid var(--line);border-bottom:3px double color-mix(in srgb,var(--purple) 38%,var(--line));background:color-mix(in srgb,var(--paper) 86%,transparent);box-shadow:0 4px 12px #76526c0c}
+.diary-day{background-image:linear-gradient(90deg,transparent 0 48px,#e9b3cb25 48px 49px,transparent 49px),repeating-linear-gradient(0deg,transparent 0 41px,#eadce566 41px 42px),var(--pearl-paper);background-size:auto,auto,390px}
+.day-now-line,.week-now-line{box-shadow:0 0 0 1px #fff8,0 0 8px color-mix(in srgb,var(--pink) 38%,transparent)}
+.day-now-line::before,.week-now-line::before{width:14px;height:14px;top:-6px;left:-6px;background:url("/themes/magical-diary/emblem.svg") center/contain no-repeat;border-radius:0}
+.diary-week{background:#fffafd;box-shadow:inset 5px 0 12px #8d66800a}
+.week-desktop-header{border-bottom:3px double var(--line)}
+.week-date-heading.is-today>button{box-shadow:inset 0 0 0 1px white,0 2px 0 #d6b2cb}
+.week-day-column:nth-child(2n){background:color-mix(in srgb,var(--bg) 42%,var(--paper))}
+.week-event{box-shadow:inset 0 1px #ffffffaa,1px 2px 3px #76556c12}
+.diary-month{background:#fffafd}
+.month-overview-heading{position:relative;padding-bottom:24px;background:var(--pearl-paper) center/350px}
+.month-overview-heading::after{content:"";position:absolute;left:20px;right:20px;bottom:3px;height:20px;background:var(--ribbon-divider) center/100% 18px no-repeat;opacity:calc(var(--ornament-opacity)*.8)}
+.month-grid>button{background-image:linear-gradient(135deg,transparent 91%,color-mix(in srgb,var(--pink2) 55%,transparent) 91%)}
+.month-agenda{position:relative;background-color:#fff7fb;background-image:var(--pearl-paper);background-size:300px}
+.month-agenda::before{content:"";position:absolute;inset:7px;border:1px solid #e6d3df;border-radius:9px;pointer-events:none;opacity:var(--ornament-opacity)}
+.month-agenda-heading,.month-agenda-items,.month-agenda>.diary-button,.month-agenda>.notebook-empty{position:relative}
+
+/* Command and capture dialogs resemble the diary control console. */
+.diary-dialog{background-image:var(--pearl-paper),var(--surface);background-size:330px,auto;border:1px solid #d6b4cf;box-shadow:0 18px 65px #52354d40,0 0 0 5px #fff8,inset 0 0 0 7px #fff8}
+.diary-dialog h2{position:relative;padding-bottom:18px}
+.diary-dialog h2::after{content:"";position:absolute;left:0;right:0;bottom:0;height:12px;background:var(--ribbon-divider) center/100% 12px no-repeat;opacity:calc(var(--ornament-opacity)*.75);pointer-events:none}
+.diary-theme .modal-close{z-index:2}
+.command-palette{border-top:5px solid color-mix(in srgb,var(--purple) 50%,var(--pink2))}
+.command-palette input{box-shadow:inset 0 2px 4px #70516a10,0 0 0 3px #fff8}
+
+/* Simple remains deliberately plain and quiet. */
+.diary-theme[data-theme="simple"] .diary-main,
+.diary-theme[data-theme="simple"] :is(.tasks-notebook,.inbox-notebook,.projects-notebook,.routines-notebook,.money-notebook,.diary-day,.month-overview-heading,.month-agenda,.diary-dialog){background-image:none}
+.diary-theme[data-theme="simple"] :is(.diary-main>header h1,.notebook-heading,.month-overview-heading,.money-overview,.diary-dialog h2)::after,
+.diary-theme[data-theme="simple"] :is(.tasks-notebook,.inbox-notebook,.projects-notebook,.project-card,.month-agenda,.notebook-empty)::before,
+.diary-theme[data-theme="simple"] :is(.notebook,.inbox-notebook,.money-overview,.routine-card.done .routine-stamp)::after{display:none}
+.diary-theme[data-theme="simple"] .diary-tabs>button{transition:none}
+.diary-theme[data-theme="simple"] .diary-tabs>button.active{transform:none;box-shadow:none}
+.diary-theme[data-theme="simple"] .diary-tabs>button.active::after{display:none}
+.diary-theme[data-theme="simple"] :is(.reconcile-card,.reconcile-card:nth-of-type(even)){transform:none;background-image:none}
+.diary-theme[data-theme="simple"] .routine-card.done .routine-stamp{animation:none;transform:none}
+.diary-theme[data-theme="simple"] .diary-page{animation:none}
+
+@media(max-width:840px){
+  .diary-theme .shell{padding-bottom:104px}
+  .diary-main{padding-bottom:34px}
+  .diary-main>header h1::after{width:120px}
+  .diary-tabs{position:fixed;left:12px;right:12px;bottom:max(7px,env(safe-area-inset-bottom));z-index:24;border-radius:16px;padding:5px}
+  .diary-tabs>button{min-height:52px;padding:6px 3px}
+  .diary-tabs>button.active{transform:translateY(-2px)}
+  .diary-theme .mobile-capture{width:52px;height:52px;right:19px;bottom:76px;padding:0;border-radius:50%;font-size:0;display:grid;place-items:center;box-shadow:0 4px 0 #d49ab9,0 7px 18px #704e672d}
+  .diary-theme .mobile-capture svg{width:20px;height:20px}
+  .notebook-heading{padding-bottom:14px;margin-bottom:18px}
+  .notebook-heading::after{height:12px;background-size:100% 12px}
+  .tasks-notebook{background-image:linear-gradient(90deg,transparent 0 24px,#efbcd22f 24px 25px,transparent 25px),repeating-linear-gradient(0deg,transparent 0 39px,var(--paper-line) 39px 40px),var(--pearl-paper)}
+  .tasks-notebook::before{left:7px;top:118px}
+  .task-ledger{margin-left:4px}
+  .task-entry{min-height:58px}
+  .task-entry.is-complete::after{display:none}
+  .reconcile-group{grid-template-columns:1fr;padding:11px 8px 15px;gap:10px}
+  .reconcile-card,.reconcile-card:nth-of-type(even){transform:none;padding:17px 14px;background-size:30px 30px,auto}
+  .projects-notebook{padding-left:31px;background-image:linear-gradient(90deg,#ad8dbf 0 18px,#e3cade 18px 21px,transparent 21px),var(--pearl-paper)}
+  .projects-notebook::before{left:5px}
+  .project-branch .project-branch{margin-left:12px;padding-left:12px}
+  .project-card::before{width:58px;right:14px}
+  .routine-day-summary{padding:12px;gap:9px}
+  .routine-day-summary progress{width:78px}
+  .routine-list{grid-template-columns:1fr}
+  .routine-card{border-right:0;min-height:0;padding:16px}
+  .routine-stamp{width:42px;height:42px}
+  .money-notebook{background-image:repeating-linear-gradient(0deg,transparent 0 32px,#e3d6cc55 32px 33px),var(--pearl-paper)}
+  .money-overview{grid-template-columns:1fr;border-bottom-width:2px}
+  .money-overview>div,.money-overview>div.expense,.money-overview>div.income{display:grid;grid-template-columns:1fr auto;align-items:center;border-right:0;border-bottom:1px solid #ddcbd0;padding:13px 10px}
+  .money-overview>div:last-child{border-bottom:0}.money-overview span{margin:0}.money-overview b{font-size:21px}
+  .money-ledger{padding-inline:5px}
+  .transaction-entry>strong{min-width:85px;font-size:15px}
+  .month-overview-heading{padding-bottom:22px}
+  .month-agenda::before{inset:5px}
+  .diary-dialog{background-size:260px,auto}
+}
+
+@media(max-width:390px){
+  .diary-theme .shell{padding-inline:9px}.diary-main{padding-inline:9px}
+  .diary-tabs{left:8px;right:8px}.diary-tabs>button span{font-size:9px}
+  .projects-notebook{padding-left:27px}.project-card{padding:15px}
+  .reconcile-card{padding-inline:12px}.reconcile-actions{gap:6px}
+  .transaction-copy>b{font-size:12px}.transaction-entry{gap:7px}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .diary-theme{--motion-fast:0ms;--motion-open:0ms}
+  .diary-theme *,.diary-theme *::before,.diary-theme *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
