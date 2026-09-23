@@ -31,6 +31,7 @@ export function createExecutionSessionPayload(
   now: Date,
   suggestedMinutes: number | null,
   task?: CoreEntity<TaskData>,
+  taskActionId?: string | null,
 ): ExecutionSessionData {
   const isTask = target.type === "task";
   const plan = isTask ? null : target as CoreEntity<PlanData>;
@@ -38,6 +39,7 @@ export function createExecutionSessionPayload(
   return {
     targetKind: isTask ? "task" : "plan",
     taskId: targetTask?.id || plan?.payload.taskId || null,
+    taskActionId: plan?.payload.taskActionId || taskActionId || null,
     planId: plan?.id || null,
     title: target.payload.title,
     startedAt: now.toISOString(),
@@ -62,6 +64,7 @@ export function completionPayloads(
   const actual: ActualData = {
     title: session.payload.title,
     taskId: session.payload.taskId || null,
+    taskActionId: session.payload.taskActionId || null,
     planId: session.payload.planId || null,
     projectId: null,
     calendarCategoryId: task?.payload.calendarCategoryId || null,

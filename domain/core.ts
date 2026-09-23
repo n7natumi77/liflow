@@ -1,5 +1,6 @@
 export const ENTITY_TYPES = [
   "task",
+  "taskAction",
   "plan",
   "actual",
   "inbox",
@@ -12,6 +13,10 @@ export const ENTITY_TYPES = [
   "conditionRecord",
   "executionSession",
   "transaction",
+  "moneyCategory",
+  "moneyMethod",
+  "transfer",
+  "budget",
   "checkin",
   "calendarCategory",
   "direction",
@@ -61,10 +66,25 @@ export type TaskData = {
   completedAt?: string | null;
 };
 
+export type TaskActionData = {
+  taskId: string;
+  title: string;
+  status: "todo" | "done" | "skipped";
+  sortOrder: number;
+  estimatedMinutes?: number | null;
+  minimumUsefulMinutes?: number | null;
+  contexts?: string[];
+  energyLevel?: "low" | "medium" | "high" | null;
+  interruptible?: boolean;
+  setupCost?: number | null;
+  completedAt?: string | null;
+};
+
 export type PlanResolution = "cancelled" | "postponed" | "unneeded" | "skipped";
 export type PlanData = {
   title: string;
   taskId?: string | null;
+  taskActionId?: string | null;
   /** Legacy organization link. */
   projectId?: string | null;
   calendarCategoryId?: string | null;
@@ -94,6 +114,7 @@ export type PlanData = {
 export type ActualData = {
   title: string;
   taskId?: string | null;
+  taskActionId?: string | null;
   /** Canonical schema-v4 relation. Multiple Actuals may point to one Plan. */
   planId?: string | null;
   /** Legacy organization link. */
@@ -223,6 +244,16 @@ export type ConditionRecordData = {
     targetId?: string | null;
     targetKind?: "task" | "plan" | null;
     usableMinutes?: number | null;
+    /** Expiry is reason-specific; resolvedAt is the explicit manual restore. */
+    expiresAt?: string | null;
+    resolvedAt?: string | null;
+    windowKey?: string | null;
+  } | null;
+  /** A short, explicit request for recovery. It is not a half-day fatigue score. */
+  recoveryRequest?: {
+    requestedAt: string;
+    expiresAt: string;
+    resolvedAt?: string | null;
   } | null;
 };
 
@@ -230,6 +261,7 @@ export type ExecutionOutcome = "activityCompleted" | "paused";
 export type ExecutionSessionData = {
   targetKind: "task" | "plan";
   taskId?: string | null;
+  taskActionId?: string | null;
   planId?: string | null;
   title: string;
   startedAt: string;
@@ -247,6 +279,9 @@ export type TransactionData = {
   amount: number;
   direction: "income" | "expense";
   category: string;
+  categoryId?: string | null;
+  moneyMethodId?: string | null;
+  transferId?: string | null;
   occurredAt: string;
   expectedAt?: string | null;
   status: "expected" | "settled";
@@ -256,12 +291,40 @@ export type TransactionData = {
   projectId?: string | null;
   note?: string;
 };
+export type MoneyCategoryData = {
+  name: string;
+  appliesTo: "expense" | "income" | "both";
+  sortOrder: number;
+  archived: boolean;
+  systemKey?: "other" | "transferFee" | null;
+};
+export type MoneyMethodData = {
+  name: string;
+  sortOrder: number;
+  archived: boolean;
+};
+export type TransferData = {
+  amount: number;
+  sourceMethodId: string;
+  destinationMethodId: string;
+  occurredAt: string;
+  note?: string;
+  feeAmount?: number;
+  feeTransactionId?: string | null;
+};
+export type BudgetData = {
+  categoryId: string;
+  period: "week" | "month";
+  amount: number;
+  active: boolean;
+};
 export type SettingsData = {
   calendarView: "day" | "week" | "month";
   visibleCalendarCategories: string[];
   showPlan: boolean;
   showActual: boolean;
   showTaskDeadlines: boolean;
+  defaultCalendarCategoryId?: string | null;
   dayStart?: string;
   dayEnd?: string;
   guidanceIntensity?: "strong" | "balanced" | "light";

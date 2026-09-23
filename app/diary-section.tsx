@@ -5,7 +5,7 @@ import { DiaryDialog } from "./diary-dialog";
 import { FairyCharacter } from "./fairy-character";
 import type { CoreEntity, EntityType } from "../domain/core";
 
-export type CreateEntity = (type: EntityType, payload: Record<string, unknown>) => Promise<void>;
+export type CreateEntity = (type: EntityType, payload: Record<string, unknown>) => Promise<CoreEntity>;
 export type UpdateEntity = (entity: CoreEntity, payload: Record<string, unknown>, deleted?: boolean) => Promise<void>;
 export type SectionProps = { entities: CoreEntity[]; create: CreateEntity; update: UpdateEntity };
 
@@ -31,7 +31,7 @@ export function useDiaryAction() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  const run = async (action: () => Promise<void>, message = "保存しました") => {
+  const run = async (action: () => Promise<unknown>, message = "保存しました") => {
     if (lock.current) return false;
     lock.current = true; setBusy(true); setError(""); setNotice("");
     try {

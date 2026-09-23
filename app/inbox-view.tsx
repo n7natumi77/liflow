@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { CalendarDays, Check, Clock3, Inbox, MoreHorizontal, RotateCcw } from "lucide-react";
+import { CalendarDays, Check, Clock3, Inbox, MoreHorizontal, RotateCcw, X } from "lucide-react";
 import { unresolved, type CoreEntity, type InboxData, type PlanData } from "../domain/core";
 import type { CaptureState } from "./diary-types";
 import { ActionFeedback, DiaryEmpty, SectionHeading, useDiaryAction, type CreateEntity, type UpdateEntity } from "./diary-section";
@@ -15,10 +15,11 @@ const groups = [
 
 export function InboxView({ entities, checks, update, postpone, recordAsPlanned, create, setModal, openCalendar }: {
   entities: CoreEntity[]; checks: ReturnType<typeof unresolved>; update: UpdateEntity; create: CreateEntity;
-  postpone: (plan: CoreEntity<PlanData>) => Promise<void>; recordAsPlanned: (plan: CoreEntity<PlanData>) => Promise<void>;
+  postpone: (plan: CoreEntity<PlanData>, startAt?: string, endAt?: string) => Promise<void>; recordAsPlanned: (plan: CoreEntity<PlanData>) => Promise<void>;
   setModal: (modal: CaptureState) => void; openCalendar: () => void;
 }) {
   const [filter, setFilter] = useState("all");
+  const [rescheduling, setRescheduling] = useState<CoreEntity<PlanData> | null>(null), [moveDate, setMoveDate] = useState(""), [moveStart, setMoveStart] = useState("09:00"), [moveEnd, setMoveEnd] = useState("10:00");
   const action = useDiaryAction();
   // If marking the source note fails, retry only that step during this visit.
   const [converted, setConverted] = useState(new Set<string>());
@@ -41,8 +42,8 @@ export function InboxView({ entities, checks, update, postpone, recordAsPlanned,
                 <button className="diary-button primary" disabled={action.busy} onClick={() => run(() => recordAsPlanned(entity as CoreEntity<PlanData>))}><Check size={15}/>だいたい予定通り</button>
                 <button className="diary-button" disabled={action.busy} onClick={() => setModal({ kind: "actual", planId: entity.id })}><Clock3 size={15}/>実際の時間を入力</button>
                 <details className="entry-more"><summary aria-label={`${(entity.payload as PlanData).title}のその他の操作`}><MoreHorizontal size={18}/>その他</summary><div>
-                  <button disabled={action.busy} onClick={() => run(() => postpone(entity as CoreEntity<PlanData>), "元の予定を残して、明日に移しました")}><RotateCcw size={14}/>明日に移す</button>
-                  <button disabled={action.busy} onClick={() => run(() => update(entity, { ...entity.payload, resolution: "cancelled" }))}>やらなかった</button>
+                  <button disabled={action.busy} onClick={() => { const plan = entity as CoreEntity<PlanData>, next = new Date(plan.payload.startAt); next.setDate(next.getDate() + 1); setRescheduling(plan); setMoveDate(next.toLocaleDateString("sv-SE")); setMoveStart(new Date(plan.payload.startAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false })); setMoveEnd(new Date(plan.payload.endAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false })); }}><RotateCcw size={14}/>別日に移す</button>
+                  <button disabled={action.busy} onClick={() => run(() => update(entity, { ...entity.payload, resolution: "skipped" }))}>今回はスキップ</button>
                   <button disabled={action.busy} onClick={() => run(() => update(entity, { ...entity.payload, resolution: "unneeded" }))}>不要になった</button>
                 </div></details>
               </>}
@@ -66,5 +67,5 @@ export function InboxView({ entities, checks, update, postpone, recordAsPlanned,
       </section> : null;
     })}
     {checks.length > 0 && filter !== "all" && !checks.some(c => c.kind === filter) && <DiaryEmpty title="この種類の確認は終わりました">「すべて」から、ほかの項目も確認できます。</DiaryEmpty>}
-  </section></div>;
+  </section>{rescheduling && <div className="inline-reschedule panel"><button aria-label="閉じる" onClick={() => setRescheduling(null)}><X size={16}/></button><h3>「{rescheduling.payload.title}」を移す</h3><div className="form-pair"><label>日付<input type="date" value={moveDate} onChange={event => setMoveDate(event.target.value)}/></label><label>開始<input type="time" value={moveStart} onChange={event => setMoveStart(event.target.value)}/></label><label>終了<input type="time" value={moveEnd} onChange={event => setMoveEnd(event.target.value)}/></label></div><button className="diary-button primary" disabled={action.busy || !moveDate || moveStart >= moveEnd} onClick={() => void action.run(async () => { await postpone(rescheduling, new Date(moveDate + "T" + moveStart + ":00").toISOString(), new Date(moveDate + "T" + moveEnd + ":00").toISOString()); setRescheduling(null); }, "元の予定を残して移しました")}>この日時へ移す</button></div>}</div>;
 }

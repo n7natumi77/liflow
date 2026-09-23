@@ -153,13 +153,13 @@ test("fatigue yields recovery unless a critical Task exists", () => {
   assert.equal(getNowDecision([settings, awake, condition, critical], now).reason, "critical_deadline");
 });
 
-test("wake, morning Routine, running Session, and wind down follow priority", () => {
+test("wake, retired Routine Flow, running Session, and wind down follow priority", () => {
   const morning = new Date("2026-01-01T07:00:00");
   assert.equal(getNowDecision([settings], morning).reason, "wake_check");
   const sleep = make("sleep", "sleepRecord", { date: "2026-01-01", actualWakeAt: morning.toISOString(), source: "manual" });
   const flow = make("flow", "routineFlow", { name: "朝", active: true, trigger: { type: "afterWake" }, steps: [{ id: "wash", title: "顔を洗う", executionMode: "checkOnly", estimatedMinutes: 3 }] });
   const run = make("run", "routineRun", { routineFlowId: "flow", startedAt: morning.toISOString(), status: "running", endedAt: null, stepResults: [{ stepId: "wash", status: "pending", startedAt: morning.toISOString(), endedAt: null }] });
-  assert.equal(getNowDecision([settings, sleep, flow, run], morning).reason, "morning_routine");
+  assert.equal(getNowDecision([settings, sleep, flow, run], morning).reason, "free");
   const session = make("session", "executionSession", { targetKind: "task", taskId: "x", title: "実行中", startedAt: morning.toISOString(), status: "running", endedAt: null });
   assert.equal(getNowDecision([settings, sleep, flow, run, session], morning).reason, "running_session");
   const late = new Date("2026-01-01T23:00:00");
@@ -168,15 +168,14 @@ test("wake, morning Routine, running Session, and wind down follow priority", ()
   assert.equal(getNowDecision([settings, lateCritical], late).reason, "critical_deadline");
 });
 
-test("Morning Flow reports urgency against Travel departure and returns to Task choice when finished early", () => {
+test("retired Morning Flow does not take Now priority and Task choice still works", () => {
   const morning = new Date("2026-01-01T08:30:00");
   const sleep = make("sleep-morning", "sleepRecord", { date: "2026-01-01", actualWakeAt: at("2026-01-01", "07:00"), source: "manual" });
   const flow = make("flow-morning", "routineFlow", { name: "朝", active: true, trigger: { type: "afterWake" }, steps: [{ id: "prepare", title: "支度", executionMode: "pacedTimer", estimatedMinutes: 25 }] });
   const run = make("run-morning", "routineRun", { routineFlowId: flow.id, startedAt: morning.toISOString(), status: "running", endedAt: null, stepResults: [{ stepId: "prepare", status: "pending", startedAt: morning.toISOString(), endedAt: null }] });
   const travel = plan("morning-travel", "09:00", "09:30", { type: "travel" });
   const urgent = getNowDecision([settings, sleep, flow, run, travel], morning);
-  assert.equal(urgent.reason, "morning_routine");
-  assert.equal(urgent.reasonDetails?.urgent, true);
+  assert.equal(urgent.reason, "free");
   const report = task("morning-task", { deadline: at("2026-01-01", "10:00"), estimatedRemainingMinutes: 30 });
   const afterFlow = getNowDecision([settings, sleep, travel, report], morning);
   assert.equal(afterFlow.primaryAction?.kind, "task");

@@ -3,14 +3,13 @@ import {
   type ConditionRecordData,
   type CoreEntity,
   type ExecutionSessionData,
-  type RoutineFlowData,
-  type RoutineRunData,
   type SettingsData,
   type TaskData,
 } from "./core.ts";
 import { directionPoliciesFromSettings, getDirectionNeeds } from "./directions.ts";
-import { currentRoutineStep } from "./execution.ts";
 import { getWakeWindow } from "./wake.ts";
+import { activeRecoveryRequest } from "./start-assist.ts";
+import { currentTaskAction } from "./task-actions.ts";
 import {
   getCurrentFixedPlan,
   getDepartureAnchor,
@@ -27,14 +26,12 @@ export type NowPrimaryAction =
   | { kind: "session"; sessionId: string; taskId: string | null; planId: string | null; title: string; startedAt: string; suggestedMinutes: number | null }
   | { kind: "wake"; title: string }
   | { kind: "plan"; planId: string; title: string }
-  | { kind: "task"; taskId: string; sourcePlanId?: string | null; title: string; suggestedMinutes: number }
-  | { kind: "routine"; routineRunId: string; stepId: string; title: string; executionMode: string; suggestedMinutes: number | null; startedAt: string | null }
+  | { kind: "task"; taskId: string; taskActionId?: string | null; sourcePlanId?: string | null; title: string; suggestedMinutes: number }
   | { kind: "rest"; title: string; suggestedMinutes: number }
   | null;
 export type NowReason =
   | "running_session"
   | "wake_check"
-  | "morning_routine"
   | "current_fixed_plan"
   | "critical_deadline"
   | "tight_deadline"
@@ -59,6 +56,7 @@ export type NowEngineOptions = {
   assistReason?: StartAssistReason | null;
   skippedTaskIds?: string[];
   unavailableTaskIds?: string[];
+  unavailablePlanIds?: string[];
   /** Backward-compatible option used by earlier callers. */
   excludedTaskIds?: string[];
 };
@@ -98,19 +96,6 @@ const settingsFor = (entities: CoreEntity[]) => ({
   ...active<SettingsData>(entities, "settings")[0]?.payload,
 });
 
-function routineContext(entities: CoreEntity[]) {
-  const run = active<RoutineRunData>(entities, "routineRun")
-    .filter((item) => item.payload.status === "running")
-    .sort((a, b) => b.payload.startedAt.localeCompare(a.payload.startedAt))[0];
-  if (!run) return null;
-  const flow = active<RoutineFlowData>(entities, "routineFlow").find(
-    (item) => item.id === run.payload.routineFlowId,
-  );
-  const step = flow ? currentRoutineStep(flow, run) : null;
-  const stepResult = step ? run.payload.stepResults.find((item) => item.stepId === step.id) : null;
-  return flow && step ? { run, flow, step, stepResult } : null;
-}
-
 function runningSession(entities: CoreEntity[]) {
   return active<ExecutionSessionData>(entities, "executionSession")
     .filter((item) => item.payload.status === "running")
@@ -134,16 +119,18 @@ function highFatigue(entities: CoreEntity[], now: Date) {
 }
 
 function taskAction(
+  entities: CoreEntity[],
   task: CoreEntity<TaskData>,
   usableMinutes: number,
   assistReason?: StartAssistReason | null,
 ) {
+  const current = currentTaskAction(entities, task.id);
   const remaining = getTaskRemainingEstimate(task);
-  const minimum = task.payload.nextAction?.minimumUsefulMinutes || 1;
+  const minimum = current?.payload.minimumUsefulMinutes || task.payload.nextAction?.minimumUsefulMinutes || 1;
   let suggested = Math.max(minimum, Math.min(usableMinutes || 5, remaining ?? 25));
-  let title = task.payload.nextAction?.title || task.payload.title;
+  let title = current?.payload.title || task.payload.nextAction?.title || task.payload.title;
   if (assistReason === "unknown") {
-    title = task.payload.nextAction?.title || `まず5分だけ「${task.payload.title}」に触る`;
+    title = current?.payload.title || task.payload.nextAction?.title || `まず5分だけ「${task.payload.title}」に触る`;
     suggested = 5;
   } else if (assistReason === "heavy") suggested = 5;
   else if (assistReason === "boring") suggested = 10;
@@ -151,6 +138,7 @@ function taskAction(
   return {
     kind: "task" as const,
     taskId: task.id,
+    taskActionId: current?.id || null,
     title,
     suggestedMinutes: Math.max(1, Math.min(suggested, Math.max(1, usableMinutes))),
   };
@@ -173,13 +161,7 @@ export function getNowDecision(
   options: NowEngineOptions = {},
 ): NowDecision {
   const settings = settingsFor(entities);
-  const routine = routineContext(entities);
-  const remainingRoutineMinutes = routine
-    ? routine.flow.payload.steps
-        .filter((step) => routine.run.payload.stepResults.find((result) => result.stepId === step.id)?.status === "pending")
-        .reduce((sum, step) => sum + (step.estimatedMinutes || 0), 0)
-    : 0;
-  const window = getUsableWindow(entities, now, settings, remainingRoutineMinutes);
+  const window = getUsableWindow(entities, now, settings, 0);
   const departure = getDepartureAnchor(entities, now, settings.departureSafetyBufferMinutes);
   const earlyStart = getEarlyStartCandidate(entities, now, settings);
   const base = {
@@ -217,28 +199,14 @@ export function getNowDecision(
       reasonDetails: wakeWindow,
     };
   }
-  if (routine) {
-    const urgent = !!departure &&
-      new Date(departure.recommendedDepartureAt).getTime() - now.getTime() <= remainingRoutineMinutes * 60000;
-    return {
-      ...base,
-      mode: routine.flow.payload.trigger.type === "afterWake" ? "morning" : "focus",
-      primaryAction: {
-        kind: "routine",
-        routineRunId: routine.run.id,
-        stepId: routine.step.id,
-        title: routine.step.title,
-        executionMode: routine.step.executionMode,
-        suggestedMinutes: routine.step.estimatedMinutes || null,
-        startedAt: routine.stepResult?.startedAt || null,
-      },
-      reason: "morning_routine",
-      reasonDetails: { urgent, remainingRoutineMinutes },
-    };
-  }
+  const recovery = activeRecoveryRequest(entities, now);
+  if (recovery) return {
+    ...base, mode: "recovery", primaryAction: { kind: "rest", title: "15分休もう", suggestedMinutes: 15 },
+    reason: "recovery", reasonDetails: { conditionRecordId: recovery.id },
+  };
 
   const current = getCurrentFixedPlan(entities, now);
-  if (current) {
+  if (current && !(options.unavailablePlanIds || []).includes(current.id)) {
     return {
       ...base,
       mode: "fixed",
@@ -267,7 +235,7 @@ export function getNowDecision(
     return {
       ...base,
       mode: "focus",
-      primaryAction: taskAction(critical, window.usableMinutes, options.assistReason),
+      primaryAction: taskAction(entities, critical, window.usableMinutes, options.assistReason),
       reason: "critical_deadline",
       reasonDetails: reservation,
     };
@@ -286,7 +254,7 @@ export function getNowDecision(
     return {
       ...base,
       mode: "focus",
-      primaryAction: taskAction(tight, window.usableMinutes, options.assistReason),
+      primaryAction: taskAction(entities, tight, window.usableMinutes, options.assistReason),
       reason: "tight_deadline",
       reasonDetails: reservations.find((item) => item.taskId === tight.id),
     };
@@ -297,7 +265,7 @@ export function getNowDecision(
       return {
         ...base,
         mode: "focus",
-        primaryAction: taskAction(task, window.usableMinutes, options.assistReason),
+        primaryAction: taskAction(entities, task, window.usableMinutes, options.assistReason),
         reason: "direction_need",
         reasonDetails: need,
       };
@@ -311,7 +279,7 @@ export function getNowDecision(
     return {
       ...base,
       mode: "focus",
-      primaryAction: taskAction(safe, window.usableMinutes, options.assistReason),
+      primaryAction: taskAction(entities, safe, window.usableMinutes, options.assistReason),
       reason: "continuation",
     };
   }

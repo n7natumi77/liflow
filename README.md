@@ -2,15 +2,17 @@
 
 Liflowを自分のPCで起動してテストできる配布版です。ChatGPT Workや公開Siteを開いておく必要はありません。ログインと端末間同期には旧Liflowと同じFirebaseプロジェクトを使用します。
 
-「今日」では当日の予定と実績を別々に確認でき、「計画」では日・週・月を切り替えて編集できます。不正な時間範囲や親タスクの循環は保存前に検出します。端末間でrevisionが競合した更新は古い内容で上書きせず、設定画面で「この端末」と「クラウド」のどちらを残すか選べます。
+「カレンダー」ではPlanの形の中へ紐づくActualを重ね、日・週・月を切り替えて確認できます。不正な時間範囲や親タスクの循環は保存前に検出します。端末間でrevisionが競合した更新は古い内容で上書きせず、設定画面で「この端末」と「クラウド」のどちらを残すか選べます。
 
 「今日を整える」では、予定通りのActual作成、実際の時間の入力、やらなかった、不要になった、明日への延期を選べます。予定通りのActual作成と延期はFirestoreトランザクションで処理し、途中までしか保存されない状態を防ぎます。元のPlanは上書きせず履歴として残ります。
 
-設定画面で一日の開始・終了、案内強度、予定切替・出発バッファ、就寝・起床候補、Wind Down時間を変更できます。「今」は固定予定、締切予約、Direction実績、疲労、Morning Flow、就寝時間から次の行動を1件だけ導出します。ActualからPlanへの関連付けと、旧`Plan.actualId`が残るデータの互換リンク解除もFirestoreトランザクションで処理します。`Actual.planId`が正規参照で、1件のPlanへ複数のActualを記録できます。
+設定画面で一日の開始・終了、案内強度、予定切替・出発バッファ、就寝・起床候補、Wind Down時間を変更できます。「今」は固定予定、締切予約、疲労、就寝時間から次の行動を1件だけ導出します。ActualからPlanへの関連付けと、旧`Plan.actualId`が残るデータの互換リンク解除もFirestoreトランザクションで処理します。`Actual.planId`が正規参照で、1件のPlanへ複数のActualを記録できます。
 
 Phase 2ではPWA、通知境界、繰り返し予定、Future Block、Direction実績表示を追加しました。起床確認は固定の午前判定ではなく、当日の`plannedWakeAt`、Sleep Plan、設定した通常の起床候補の順で決まります。繰り返し予定は未来45日だけを安定IDで生成し、手動編集した予定をRuleで上書きしません。Future Blockは専門・進路の不足とOpen Taskが揃い、criticalな締切がない安全な空き時間にだけ1日最大1件作ります。
 
-Phase 2.4ではProjectと旧Routineを通常UIから退役させ、既存データだけを互換保持します。生活の繰り返しはRecurring Activity RuleとRoutine Flowで扱い、実行はSessionからActualを記録します。「この作業は終わった」「Taskも完了」「いったん止める」を区別し、Pause後の再開では同じPlanへ複数のActualを残せます。Early Startは安全な未来Planだけを実時刻から開始し、元のPlan時刻を変更しません。短時間のPlan/ActualはDay・Weekで時間位置を保ったコンパクト行として表示します。
+Phase 2.4ではProjectと旧Routineを通常UIから退役させ、既存データだけを互換保持します。「この作業は終わった」「Taskも完了」「いったん止める」を区別し、Pause後の再開では同じPlanへ複数のActualを残せます。Early Startは安全な未来Planだけを実時刻から開始し、元のPlan時刻を変更しません。
+
+Phase 2.45ではPrimary Navigationを「今・カレンダー・タスク・お金」に整理し、Routine Flowを通常UIから退役させました。Task Action、必須のCalendar Category、Plan/Actual統合Activity、Start Assistの一時除外、Money Category・支払方法・振替・週/月予算を追加しています。旧Entityは削除せず互換保持します。
 
 ## 必要なもの
 
@@ -44,9 +46,9 @@ Firebase ConsoleではAuthenticationの「メール/パスワード」を有効�
 
 ## Schemaとバックアップ
 
-永続Entityは共通registryで管理され、すべて`schemaVersion`を持ちます。旧データは`v1 → v2 → v3 → v4 → v5 → v6`の順で段階的に移行します。移行前には`users/{uid}/backups/{backupId}`へ件数・時刻・schemaVersionを記録し、その下へEntity単位のsnapshotを保存します。snapshotの保存完了後にだけmigrationを開始します。設定画面から過去のsnapshotを選んで復元でき、復元直前の状態も自動で別snapshotへ保存します。
+永続Entityは共通registryで管理され、すべて`schemaVersion`を持ちます。旧データは`v1 → v2 → v3 → v4 → v5 → v6 → v7`の順で段階的に移行します。移行前には`users/{uid}/backups/{backupId}`へ件数・時刻・schemaVersionを記録し、その下へEntity単位のsnapshotを保存します。snapshotの保存完了後にだけmigrationを開始します。設定画面から過去のsnapshotを選んで復元でき、復元直前の状態も自動で別snapshotへ保存します。
 
-schema v4ではTask / Plan / Actualへ任意の`directionId`を追加し、固定IDの初期Direction（学業・専門・進路・生活・世界）を重複なく初期化します。Taskは`nextAction`と`estimatedRemainingMinutes`を保持できます。schema v5では永続化される`executionSession`、時間安全設定、編集可能な初期Morning Flowを追加しました。schema v6ではPlanへRecurring / Future Blockの生成元と編集保護状態、SettingsへWake・通知・Direction Policyを追加しました。Phase 2.4もschema v6のままで、Session終了時の`activityCompleted` / `paused`を互換的な任意フィールドとして保存します。終了処理は決定的なActual IDを用いるFirestore transactionでActual作成と残時間更新をまとめ、二重終了によるActual重複を防ぎます。既存Project・旧Routine・RoutineOccurrence・Parent Task関連は推測変換せず、そのまま保持します。
+schema v4ではTask / Plan / Actualへ任意の`directionId`を追加し、固定IDの初期Direction（学業・専門・進路・生活・世界）を重複なく初期化します。Taskは`nextAction`と`estimatedRemainingMinutes`を保持できます。schema v5では永続化される`executionSession`、時間安全設定、編集可能な初期Morning Flowを追加しました。schema v6ではPlanへRecurring / Future Blockの生成元と編集保護状態、SettingsへWake・通知・Direction Policyを追加しました。Phase 2.4もschema v6のままで、Session終了時の`activityCompleted` / `paused`を互換的な任意フィールドとして保存します。schema v7ではTask Action、Money Category、Money Method、Transfer、Budgetを追加し、Calendar CategoryのないPlanへfallbackを設定します。旧`Task.nextAction`と文字列Money Categoryは、元データを残したまま決定的IDで一度だけ移行します。終了処理は決定的なActual IDを用いるFirestore transactionでActual作成と残時間更新をまとめ、二重終了によるActual重複を防ぎます。既存Project・旧Routine・RoutineOccurrence・Routine Flow・Parent Task関連は推測変換せず、そのまま保持します。
 
 Now Engineは`domain/now-engine.ts`、時間・締切予約は`domain/scheduling.ts`、Direction集計は`domain/directions.ts`、実行・Routine Run遷移は`domain/execution.ts`に分離されています。Phase 2のWake Window、通知、繰り返し生成、Future Blockもそれぞれ`domain/wake.ts`、`domain/notifications.ts`、`domain/recurrence.ts`、`domain/future-blocks.ts`へ分離しました。NowDecision自体は保存せず、Entity集合・現在時刻・設定値から決定論的に再計算します。
 
@@ -101,8 +103,9 @@ npx wrangler deploy --config wrangler.notifications.jsonc
 - `a 2026-09-16 16:00 17:00 図書館で勉強`：Actual
 - `m 420 電車`：今日の支出
 - `mi 5000 アルバイト`：今日の収入
-- `m 2026-05-01 420 交通費`：日付・カテゴリ付き支出
-- `mi 2026-05-01 20000 親からもらった現金`：日付・カテゴリ付き収入
+- `m 2026-09-20 220 越中宮崎→泊 --category 交通費`：日付・明細・カテゴリ付き支出
+- `m 2026-09-18 159 Suica物販 --category その他`：その他カテゴリの支出
+- `mi 2026-05-01 20000 親からもらった現金 --category その他`：日付・明細・カテゴリ付き収入
 - `n`：今
 
 自然文を直接Firestoreへ書き込む処理はありません。Webと外部UIで共通の構造化Command、validation、実行処理を使います。
@@ -111,17 +114,18 @@ npx wrangler deploy --config wrangler.notifications.jsonc
 
 設定画面にDiscord Webhook URLを入力すると、「今」「次」「確認したいもの」の状況をテスト送信できます。送信APIはFirebaseのログイン状態を検証し、Discord公式Webhook以外のURLを拒否します。Webhook URLはFirestoreへ同期せず、その端末のブラウザ内だけに保存します。
 
-Discordからの書き込みには、ローカルで動くBotを使います。Webと同じCommand Engineでvalidationしてから、Firebase上の同じEntity collectionへ保存します。
+Discordからの書き込みには、ローカルで動くBot、または配備後の`/api/discord/interactions`を使います。どちらもWebと同じCommand EngineとApplication Action境界でvalidationしてから、Firebase上の同じEntity collectionへ保存します。読み取りは`DISCORD_TRUSTED_CHANNEL_IDS`、変更はそれに加えて`DISCORD_ALLOWED_USER_IDS`で制限します。
 
 ### Discord Botの準備
 
 1. `.env.discord.example`をコピーして`.env.discord`へ名前を変えます。
 2. Discord Developer PortalでBotを作り、`DISCORD_BOT_TOKEN`を設定します。
 3. DiscordのDeveloper Modeで自分のUser IDをコピーし、`DISCORD_ALLOWED_USER_IDS`へ設定します。ここにない利用者からの操作は拒否されます。
-4. Firebase ConsoleのサービスアカウントJSONをPCへ保存し、その絶対パスを`FIREBASE_SERVICE_ACCOUNT_FILE`へ設定します。
-5. Firebase Authenticationで自分のLiflow UIDを確認し、`LIFLOW_FIREBASE_UID`へ設定します。
-6. Botを追加したテスト用サーバーのIDを`DISCORD_GUILD_ID`へ設定します。
-7. `START_DISCORD_BOT.bat`を開き、その黒い画面をBot利用中は閉じずに残します。
+4. 利用するChannel IDを`DISCORD_TRUSTED_CHANNEL_IDS`へ設定します。
+5. Firebase ConsoleのサービスアカウントJSONをPCへ保存し、その絶対パスを`FIREBASE_SERVICE_ACCOUNT_FILE`へ設定します。
+6. Firebase Authenticationで自分のLiflow UIDを確認し、`LIFLOW_FIREBASE_UID`へ設定します。
+7. Botを追加したテスト用サーバーのIDを`DISCORD_GUILD_ID`へ設定します。
+8. `START_DISCORD_BOT.bat`を開き、その黒い画面をBot利用中は閉じずに残します。
 
 サービスアカウントJSON、Bot Token、`.env.discord`は他人へ送ったりGitへ追加したりしないでください。
 
@@ -148,6 +152,8 @@ WebのCommand Paletteでも同様に、改行または`;`で複数件を並べ�
 Discordが貼り付け時の改行を空白へ変えた場合も、`/m`や`/mi`など次のSlash Commandを境界として分割します。
 
 Botは許可済みDiscord User IDだけを受け付けます。Firestoreへは`revision / createdAt / updatedAt / updatedBy / deletedAt`を含む通常のCore Entityとして保存するため、Web側へそのまま同期されます。
+
+Interaction endpointを利用する場合は、Discord Developer PortalのInteractions Endpoint URLへ公開URLの`/api/discord/interactions`を設定し、配備先Secretへ`DISCORD_PUBLIC_KEY`、`DISCORD_TRUSTED_CHANNEL_IDS`、`DISCORD_ALLOWED_USER_IDS`、`LIFLOW_FIREBASE_UID`、`FIREBASE_SERVICE_ACCOUNT_JSON`を登録します。署名が不正なリクエストは保存処理より前に拒否されます。Phase 2.45ではendpoint実装までが対象で、Cloudflareへの実配備はPhase 2.5で行います。
 
 ## 終了方法
 

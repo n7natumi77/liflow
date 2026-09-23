@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Home,
-  CalendarDays,
   CalendarRange,
   ListTodo,
   Inbox,
@@ -10,7 +9,6 @@ import {
   X,
   ArrowRight,
   Trash2,
-  Repeat2,
   WalletCards,
   Settings,
   Search,
@@ -27,11 +25,11 @@ import {
   type InboxData,
   type CalendarCategoryData,
   type SettingsData,
+  type MoneyCategoryData,
+  type MoneyMethodData,
   type DirectionData,
   type ExecutionSessionData,
   type ExecutionOutcome,
-  type RoutineFlowData,
-  type RoutineRunData,
   type SleepRecordData,
   type EntityType,
 } from "../domain/core";
@@ -45,6 +43,7 @@ import { DiaryDialog } from "./diary-dialog";
 import { dayRange, scheduledPlans } from "./diary-time";
 import type { Capture, CaptureState as Modal } from "./diary-types";
 import { MoneyView, RoutinesView } from "./life-sections";
+import { DirectionView } from "./direction-view";
 import {
   createEntity,
   createEntities,
@@ -70,18 +69,20 @@ import {
 } from "./firebase-store";
 import { executeCommandBatch, parseCommandBatch } from "../domain/commands";
 import { sendToDiscord } from "./discord-client";
-import { createExecutionSessionPayload, advanceRoutineRun } from "../domain/execution";
+import { createExecutionSessionPayload } from "../domain/execution";
 import { buildNotificationJobs } from "../domain/notifications";
+import { currentTaskAction } from "../domain/task-actions";
+import { createApplicationEntity, updateApplicationEntity } from "../domain/application-actions";
 import { disablePushNotifications, enablePushNotifications, notificationCapability, refreshPushSubscription, registerPwaServiceWorker } from "./notifications-client";
 
 const nav = [
   ["now", "今", Home],
-  ["today", "今日", CalendarDays],
   ["plan", "カレンダー", CalendarRange],
   ["tasks", "タスク", ListTodo],
-  ["routines", "ルーティン", Repeat2],
   ["money", "お金", WalletCards],
   ["inbox", "未整理", Inbox],
+  ["recurring", "繰り返し予定", CalendarRange],
+  ["directions", "方向", ArrowRight],
   ["settings", "設定", Settings],
 ] as const;
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -196,28 +197,54 @@ function LiflowApp({
   }, []);
   const create = async (type: EntityType, payload: Record<string, unknown>) => {
     try {
-      const saved = await createEntity(userId, type, payload);
+      const saved = await createApplicationEntity({ create: (nextType, nextPayload) => createEntity(userId, nextType, nextPayload) }, type, payload);
       setEntities((v) =>
         v.some((e) => e.id === saved.id) ? v : [...v, saved],
       );
       setError("");
+      return saved;
     } catch {
       setError("保存できませんでした。通信を確認してください。");
       throw Error();
     }
   };
+  const ensureCommandMoneyCategory = async (name: string) => {
+    const normalized = name.trim() || "その他";
+    const existing = active<MoneyCategoryData>(entities, "moneyCategory").find(item => item.payload.name === normalized);
+    if (existing) return existing;
+    const saved = await createEntity(userId, "moneyCategory", { name: normalized, appliesTo: "both", sortOrder: active<MoneyCategoryData>(entities, "moneyCategory").length, archived: false, systemKey: null });
+    setEntities(value => value.some(item => item.id === saved.id) ? value : [...value, saved]);
+    return saved as CoreEntity<MoneyCategoryData>;
+  };
   const commandCreate = async (
     type: EntityType,
     payload: Record<string, unknown>,
   ) => {
-    const saved = await createEntity(userId, type, payload);
+    const nextPayload = { ...payload };
+    if (type === "transaction" && !nextPayload.categoryId) {
+      const category = await ensureCommandMoneyCategory(String(nextPayload.category || "その他"));
+      nextPayload.category = category.payload.name; nextPayload.categoryId = category.id;
+    }
+    const saved = await createEntity(userId, type, nextPayload);
     setEntities((v) => (v.some((e) => e.id === saved.id) ? v : [...v, saved]));
     return saved;
   };
   const commandCreateMany = async (
     inputs: { type: EntityType; payload: Record<string, unknown> }[],
   ) => {
-    const saved = await createEntities(userId, inputs);
+    const cache = new Map(active<MoneyCategoryData>(entities, "moneyCategory").map(item => [item.payload.name, item]));
+    const prepared = [] as typeof inputs;
+    for (const input of inputs) {
+      const payload = { ...input.payload };
+      if (input.type === "transaction" && !payload.categoryId) {
+        const name = String(payload.category || "その他").trim() || "その他";
+        let category = cache.get(name);
+        if (!category) { category = await ensureCommandMoneyCategory(name); cache.set(name, category); }
+        payload.category = category.payload.name; payload.categoryId = category.id;
+      }
+      prepared.push({ ...input, payload });
+    }
+    const saved = await createEntities(userId, prepared);
     setEntities((value) => [
       ...value,
       ...saved.filter((item) => !value.some((old) => old.id === item.id)),
@@ -237,7 +264,10 @@ function LiflowApp({
     };
     setEntities((v) => v.map((e) => (e.id === entity.id ? optimistic : e)));
     try {
-      const saved = await updateEntity(userId, entity, payload, deleted);
+      const saved = await updateApplicationEntity({
+        create: (nextType, nextPayload) => createEntity(userId, nextType, nextPayload),
+        update: (old, nextPayload, softDelete) => updateEntity(userId, old, nextPayload, softDelete),
+      }, entity, payload, deleted);
       setEntities((v) => v.map((e) => (e.id === entity.id ? saved : e)));
       setError("");
     } catch (e) {
@@ -254,9 +284,9 @@ function LiflowApp({
       throw e;
     }
   };
-  const postpone = async (plan: CoreEntity<PlanData>) => {
+  const postpone = async (plan: CoreEntity<PlanData>, startAt?: string, endAt?: string) => {
     try {
-      const result = await postponePlan(userId, plan);
+      const result = await postponePlan(userId, plan, startAt && endAt ? { startAt, endAt } : 1);
       setEntities((v) => [
         ...v.filter((e) => e.id !== plan.id && e.id !== result.nextPlan.id),
         result.resolved,
@@ -359,7 +389,7 @@ function LiflowApp({
     if (!target || (target.type !== "task" && target.type !== "plan")) return;
     const planTarget = target.type === "plan" ? target as CoreEntity<PlanData> : null;
     const linkedTask = tasks.find(item => item.id === (target.type === "task" ? target.id : planTarget?.payload.taskId));
-    const saved = await startExecutionSession(userId, createExecutionSessionPayload(target as CoreEntity<TaskData> | CoreEntity<PlanData>, new Date(), suggestedMinutes, linkedTask));
+    const saved = await startExecutionSession(userId, createExecutionSessionPayload(target as CoreEntity<TaskData> | CoreEntity<PlanData>, new Date(), suggestedMinutes, linkedTask, linkedTask ? currentTaskAction(entities, linkedTask.id)?.id || null : null));
     setEntities(value => [...value.filter(item => item.id !== saved.id), saved]);
   };
   const endExecution = async (sessionId: string, outcome: ExecutionOutcome, completeTask = false) => {
@@ -376,22 +406,8 @@ function LiflowApp({
   const recordWake = async () => {
     const now = new Date(), date = localDate(now);
     const sleep = active<SleepRecordData>(entities, "sleepRecord").find(item => item.payload.date === date);
-    const flow = active<RoutineFlowData>(entities, "routineFlow").find(item => item.payload.active && item.payload.trigger.type === "afterWake");
-    const running = active<RoutineRunData>(entities, "routineRun").find(item => item.payload.status === "running");
-    const result = await recordWakeAndStartMorningFlow(userId, now, sleep, flow, running);
-    setEntities(value => [...value.filter(item => item.id !== result.sleep.id && item.id !== result.run?.id), result.sleep, ...(result.run ? [result.run] : [])]);
-  };
-  const advanceFlow = async (runId: string, stepId: string, outcome: "completed" | "skipped", checkedItemIds: string[] = []) => {
-    const run = entities.find(item => item.id === runId && item.type === "routineRun") as CoreEntity<RoutineRunData> | undefined;
-    const flow = run ? active<RoutineFlowData>(entities, "routineFlow").find(item => item.id === run.payload.routineFlowId) : undefined;
-    if (!run || !flow) return;
-    const saved = await updateEntity(userId, run, advanceRoutineRun(flow, run, stepId, outcome, new Date(), checkedItemIds) as unknown as Record<string, unknown>);
-    setEntities(value => value.map(item => item.id === saved.id ? saved : item));
-  };
-  const recordFatigue = async () => {
-    const now = new Date();
-    const saved = await createEntity(userId, "conditionRecord", { recordedAt: now.toISOString(), date: localDate(now), energyLevel: "low", fatigue: 3, mood: null, note: "今むり：疲れた", source: "manual", confidence: 1 });
-    setEntities(value => [...value, saved]);
+    const result = await recordWakeAndStartMorningFlow(userId, now, sleep, undefined, undefined);
+    setEntities(value => [...value.filter(item => item.id !== result.sleep.id), result.sleep]);
   };
   const tasks = active<TaskData>(entities, "task");
   const plans = active<PlanData>(entities, "plan");
@@ -457,39 +473,16 @@ function LiflowApp({
                 create={create}
                 update={update}
                 clock={clock}
-                nowPlan={nowPlan}
-                nextPlan={nextPlan}
                 plans={todayPlans}
                 tasks={tasks}
                 inboxCount={inbox.filter(item => !item.payload.sorted).length}
                 checks={checks.length}
-                dayEnd={settings?.payload.dayEnd || "23:00"}
                 setTab={setTab}
                 setModal={setModal}
                 beginExecution={beginExecution}
                 endExecution={endExecution}
                 recordWake={recordWake}
-                advanceFlow={advanceFlow}
-                recordFatigue={recordFatigue}
                 notificationEntry={notificationEntry}
-              />
-            )}
-            {tab === "today" && (
-              <CalendarView
-                key="today"
-                todayOnly
-                entities={entities}
-                create={create}
-                update={update}
-                openCapture={(taskId, date, start, end) =>
-                  setModal({ kind: "plan", taskId, date, start, end })
-                }
-                openEntity={(entity) =>
-                  setModal({
-                    kind: entity.type as Capture,
-                    entityId: entity.id,
-                  })
-                }
               />
             )}
             {tab === "plan" && (
@@ -511,19 +504,24 @@ function LiflowApp({
             )}
             {tab === "tasks" && (
               <TasksView
+                entities={entities}
                 tasks={tasks}
                 plans={plans}
                 categories={categories}
                 setModal={setModal}
+                create={create}
                 update={update}
               />
             )}
-            {tab === "routines" && (
+            {tab === "recurring" && (
               <RoutinesView
                 entities={entities}
                 create={create}
                 update={update}
               />
+            )}
+            {tab === "directions" && (
+              <DirectionView entities={entities} create={create} update={update}/>
             )}
             {tab === "money" && (
               <MoneyView entities={entities} create={create} update={update} />
@@ -735,12 +733,13 @@ export function SettingsView({
   nowPlan?: CoreEntity<PlanData>;
   nextPlan?: CoreEntity<PlanData>;
   checks: number;
-  create: (t: EntityType, p: Record<string, unknown>) => Promise<void>;
+  create: (t: EntityType, p: Record<string, unknown>) => Promise<CoreEntity>;
   update: (e: CoreEntity, p: Record<string, unknown>) => Promise<void>;
   onConflictResolved: (
     result: Awaited<ReturnType<typeof resolveConflict>>,
   ) => void;
 }) {
+  const calendarCategories = active<CalendarCategoryData>(entities, "calendarCategory").filter(item => !item.payload.archived);
   const [start, setStart] = useState(settings?.payload.dayStart || "07:00"),
     [end, setEnd] = useState(settings?.payload.dayEnd || "23:00"),
     [guidanceIntensity, setGuidanceIntensity] = useState(settings?.payload.guidanceIntensity || "strong"),
@@ -750,6 +749,7 @@ export function SettingsView({
     [windDown, setWindDown] = useState(String(settings?.payload.windDownMinutes ?? 45)),
     [fallbackWake, setFallbackWake] = useState(settings?.payload.fallbackWakeTime || "08:00"),
     [wakeWindow, setWakeWindow] = useState(String(settings?.payload.wakeWindowMinutes ?? 180)),
+    [defaultCategoryId, setDefaultCategoryId] = useState(settings?.payload.defaultCalendarCategoryId || calendarCategories[0]?.id || ""),
     [notificationsOn, setNotificationsOn] = useState(settings?.payload.notificationsEnabled ?? false),
     [wakeNotifications, setWakeNotifications] = useState(settings?.payload.wakeNotifications ?? true),
     [anchorNotifications, setAnchorNotifications] = useState(settings?.payload.anchorNotifications ?? true),
@@ -802,6 +802,7 @@ export function SettingsView({
       showPlan: settings?.payload.showPlan ?? true,
       showActual: settings?.payload.showActual ?? true,
       showTaskDeadlines: settings?.payload.showTaskDeadlines ?? true,
+      defaultCalendarCategoryId: defaultCategoryId || null,
       dayStart: start,
       dayEnd: end,
       guidanceIntensity,
@@ -958,6 +959,7 @@ export function SettingsView({
           <label>通常の起床候補<input aria-label="通常の起床候補" type="time" value={fallbackWake} onChange={event => setFallbackWake(event.target.value)} /></label>
           <label>起床確認の猶予（分）<input type="number" min="30" step="15" value={wakeWindow} onChange={event => setWakeWindow(event.target.value)} /></label>
           <label>次の起床予定<input aria-label="次の起床予定" type="datetime-local" value={nextWake} onChange={event => setNextWake(event.target.value)} /></label>
+          <label>予定の既定カレンダー<select value={defaultCategoryId} onChange={event => setDefaultCategoryId(event.target.value)}>{calendarCategories.map(category => <option key={category.id} value={category.id}>{category.payload.name}</option>)}</select></label>
         </div>
         {message && (
           <p
@@ -1111,7 +1113,7 @@ export function CaptureModal({
   categories: CoreEntity<CalendarCategoryData>[];
   directions: CoreEntity<DirectionData>[];
   close: () => void;
-  create: (t: EntityType, p: Record<string, unknown>) => Promise<void>;
+  create: (t: EntityType, p: Record<string, unknown>) => Promise<CoreEntity>;
   createLinkedActual: (
     plan: CoreEntity<PlanData>,
     payload: ActualData,
@@ -1128,6 +1130,9 @@ export function CaptureModal({
     : undefined;
   const editingPayload = (editing?.payload || {}) as Record<string, unknown>;
   const linkedPlan = plans.find((p) => p.id === modal.planId);
+  const savedSettings = active<SettingsData>(entities, "settings")[0];
+  const moneyCategories = active<MoneyCategoryData>(entities, "moneyCategory").filter(item => !item.payload.archived);
+  const moneyMethods = active<MoneyMethodData>(entities, "moneyMethod").filter(item => !item.payload.archived);
   const plan = (editing?.type === "plan" ? editing : linkedPlan) as
     CoreEntity<PlanData> | undefined;
   const task = (
@@ -1171,6 +1176,7 @@ export function CaptureModal({
         editingPayload.calendarCategoryId ||
           plan?.payload.calendarCategoryId ||
           task?.payload.calendarCategoryId ||
+          (modal.kind === "plan" ? savedSettings?.payload.defaultCalendarCategoryId : "") ||
           "",
       ),
     ),
@@ -1180,20 +1186,20 @@ export function CaptureModal({
     [remainingEstimate, setRemainingEstimate] = useState(
       typeof task?.payload.estimatedRemainingMinutes === "number" ? String(task.payload.estimatedRemainingMinutes) : "",
     ),
-    [nextActionTitle, setNextActionTitle] = useState(task?.payload.nextAction?.title || ""),
-    [planType, setPlanType] = useState<PlanData["type"]>(
-      (editingPayload.type as PlanData["type"]) ||
-        plan?.payload.type ||
-        (modal.taskId ? "task" : "personal"),
-    ),
+    [moneyAmount, setMoneyAmount] = useState(""),
+    [moneyDirection, setMoneyDirection] = useState<"expense" | "income">("expense"),
+    [moneyCategoryId, setMoneyCategoryId] = useState(moneyCategories[0]?.id || ""),
+    [moneyMethodId, setMoneyMethodId] = useState(moneyMethods[0]?.id || ""),
     [allDay, setAllDay] = useState(
       Boolean(editingPayload.allDay || plan?.payload.allDay),
     ),
     [busy, setBusy] = useState(false),
     [formError, setFormError] = useState("");
   const effectiveCategory = categoryId || plan?.payload.calendarCategoryId || task?.payload.calendarCategoryId || null;
+  const internalPlanType = (editingPayload.type as PlanData["type"]) || plan?.payload.type || (modal.taskId ? "task" : "appointment");
   const save = async () => {
     if (!title.trim() || busy) return;
+    if (kind === "plan" && !effectiveCategory) { setFormError("予定のカレンダーを選んでください。"); return; }
     setFormError("");
     const isAllDay = kind === "plan" && allDay;
     const preserveTime = (day: string, time: string, previous?: string) => previous && day === localDate(new Date(previous)) && time === localTime(new Date(previous)) ? previous : toIso(day, time);
@@ -1217,7 +1223,7 @@ export function CaptureModal({
           deadline: due ? task?.payload.deadline && due === localDate(new Date(task.payload.deadline)) ? task.payload.deadline : toIso(due, "23:59") : null,
           estimateMinutes: task?.payload.estimateMinutes || null,
           estimatedRemainingMinutes: remainingEstimate ? Number(remainingEstimate) : null,
-          nextAction: nextActionTitle.trim() ? { ...(task?.payload.nextAction || {}), title: nextActionTitle.trim(), generatedBy: "manual" } : null,
+          nextAction: task?.payload.nextAction || null,
           directionId: directionId || null,
           projectId: task?.payload.projectId || null,
           parentTaskId: task?.payload.parentTaskId || null,
@@ -1230,12 +1236,13 @@ export function CaptureModal({
           ...plan?.payload,
           title: title.trim(),
           taskId: modal.taskId || plan?.payload.taskId || null,
+          taskActionId: plan?.payload.taskActionId || (task ? currentTaskAction(entities, task.id)?.id || null : null),
           projectId: plan?.payload.projectId || null,
           calendarCategoryId: effectiveCategory,
           directionId: directionId || null,
           startAt: allDay ? originalAllDay && startValue && date === localDate(new Date(startValue)) ? startValue : toIso(date, "00:00") : preserveTime(date, start, startValue),
           endAt: allDay ? originalAllDay && endValue && endDate === inclusiveEndDay(endValue) ? endValue : endOfDay(endDate) : preserveTime(endDate, end, endValue),
-          type: planType,
+          type: internalPlanType,
           flexibility: plan?.payload.flexibility || "fixed",
           allDay,
           resolution: plan?.payload.resolution || null,
@@ -1247,13 +1254,14 @@ export function CaptureModal({
           ...editingPayload,
           title: title.trim(),
           taskId: String(editingPayload.taskId || task?.id || "") || null,
+          taskActionId: String(editingPayload.taskActionId || plan?.payload.taskActionId || "") || null,
           planId: String(editingPayload.planId || modal.planId || "") || null,
           projectId: typeof editingPayload.projectId === "string" ? editingPayload.projectId : null,
           calendarCategoryId: effectiveCategory,
           directionId: directionId || null,
           startAt: preserveTime(date, start, startValue),
           endAt: preserveTime(endDate, end, endValue),
-          type: String(editingPayload.type || plan?.payload.type || planType),
+          type: String(editingPayload.type || plan?.payload.type || "personal"),
           note: String(editingPayload.note || ""),
         };
       if (kind === "inbox")
@@ -1262,10 +1270,15 @@ export function CaptureModal({
           text: title.trim(),
           sorted: Boolean(editingPayload.sorted),
         };
+      if (kind === "money") {
+        const moneyCategory = moneyCategories.find(item => item.id === moneyCategoryId);
+        if (!moneyCategory || !Number.isFinite(Number(moneyAmount)) || Number(moneyAmount) <= 0) { setFormError("金額とカテゴリを入力してください。"); setBusy(false); return; }
+        payload = { title: title.trim(), amount: Number(moneyAmount), direction: moneyDirection, category: moneyCategory.payload.name, categoryId: moneyCategory.id, moneyMethodId: moneyMethodId || null, transferId: null, occurredAt: new Date().toISOString(), expectedAt: null, status: "settled", projectId: null, actualId: null, planId: null, taskId: null, note: "" };
+      }
       if (editing) await update(editing, payload);
       else if (kind === "actual" && plan)
         await createLinkedActual(plan, payload as ActualData);
-      else await create(kind, payload);
+      else await create(kind === "money" ? "transaction" : kind, payload);
       close();
     } catch {
       setFormError("保存できませんでした。入力内容を残しています。通信や最新の同期状態を確認してください。");
@@ -1281,19 +1294,19 @@ export function CaptureModal({
         <h2 id="capture-title">{editing ? "編集する" : "記録する"}</h2>
         {!editing && (
           <div className="kind-tabs">
-            {(["task", "plan", "actual", "inbox"] as Capture[]).map((k, i) => (
+            {(["task", "plan", "actual", "money", "inbox"] as Capture[]).map((k, i) => (
               <button
                 key={k}
                 className={kind === k ? "active" : ""}
                 onClick={() => setKind(k)}
               >
-                {["タスク", "予定", "実績", "あとで整理"][i]}
+                {["タスク", "予定", "実績", "お金", "メモ"][i]}
               </button>
             ))}
           </div>
         )}
         <label>
-          {kind === "inbox" ? "メモ" : "名前"}
+          {kind === "inbox" ? "メモ" : kind === "money" ? "内容" : "名前"}
           <input
             autoFocus
             value={title}
@@ -1303,14 +1316,14 @@ export function CaptureModal({
             }
           />
         </label>
-        {kind !== "inbox" && kind !== "task" && (
+        {kind !== "inbox" && kind !== "task" && kind !== "money" && (
             <label>
-              カレンダー
-              <select aria-label="カレンダー"
+              {kind === "plan" ? "カレンダー（必須）" : "カレンダー"}
+              <select aria-label="カレンダー" required={kind === "plan"}
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
               >
-                <option value="">なし</option>
+                {kind === "actual" && <option value="">なし</option>}
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.payload.name}
@@ -1319,7 +1332,7 @@ export function CaptureModal({
               </select>
             </label>
         )}
-        {kind !== "inbox" && kind !== "task" && (
+        {kind !== "inbox" && kind !== "task" && kind !== "money" && (
           <label>
             方向
             <select aria-label="方向" value={directionId} onChange={(event) => setDirectionId(event.target.value)}>
@@ -1344,7 +1357,6 @@ export function CaptureModal({
               />
             </label>
             <details className="task-details"><summary>詳細を設定</summary>
-              <label>次の一手（任意）<input value={nextActionTitle} onChange={event => setNextActionTitle(event.target.value)} placeholder="まず何をする？" /></label>
               <div className="form-pair">
                 <label>残り見積（分・任意）<input type="number" min="0" step="1" inputMode="numeric" value={remainingEstimate} onChange={event => setRemainingEstimate(event.target.value)} /></label>
                 <label>カレンダー<select aria-label="タスクのカレンダー" value={categoryId} onChange={event => setCategoryId(event.target.value)}><option value="">なし</option>{categories.map(category => <option key={category.id} value={category.id}>{category.payload.name}</option>)}</select></label>
@@ -1353,25 +1365,9 @@ export function CaptureModal({
             </details>
           </>
         )}
+        {kind === "money" && <div className="form-pair"><label>金額<input type="number" min="1" required value={moneyAmount} onChange={event => setMoneyAmount(event.target.value)}/></label><label>種類<select value={moneyDirection} onChange={event => setMoneyDirection(event.target.value as typeof moneyDirection)}><option value="expense">支出</option><option value="income">収入</option></select></label><label>カテゴリ<select required value={moneyCategoryId} onChange={event => setMoneyCategoryId(event.target.value)}>{moneyCategories.filter(item => item.payload.appliesTo === "both" || item.payload.appliesTo === moneyDirection).map(item => <option key={item.id} value={item.id}>{item.payload.name}</option>)}</select></label><label>支払方法<select value={moneyMethodId} onChange={event => setMoneyMethodId(event.target.value)}><option value="">未指定</option>{moneyMethods.map(item => <option key={item.id} value={item.id}>{item.payload.name}</option>)}</select></label></div>}
         {kind === "plan" && (
           <div className="form-pair">
-            <label>
-              種類
-              <select aria-label="種類"
-                value={planType}
-                onChange={(e) =>
-                  setPlanType(e.target.value as PlanData["type"])
-                }
-              >
-                <option value="task">タスク</option>
-                <option value="appointment">予定</option>
-                <option value="travel">移動</option>
-                <option value="rest">休憩</option>
-                <option value="sleep">睡眠</option>
-                <option value="personal">個人</option>
-                <option value="container">期間</option>
-              </select>
-            </label>
             <label className="checkbox-label">
               <input
                 type="checkbox"

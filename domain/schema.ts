@@ -5,7 +5,7 @@ import {
   type EntityType,
 } from "./core.ts";
 
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 7;
 export type StoredEntity = Omit<CoreEntity, "schemaVersion"> & { schemaVersion?: number };
 export type EntityCounts = Record<EntityType, number>;
 
@@ -20,6 +20,7 @@ const legacyDefaults: Record<EntityType, Record<string, unknown>> = {
     status: "open",
     completedAt: null,
   },
+  taskAction: {},
   plan: {
     taskId: null,
     projectId: null,
@@ -63,6 +64,10 @@ const legacyDefaults: Record<EntityType, Record<string, unknown>> = {
     projectId: null,
     note: "",
   },
+  moneyCategory: { appliesTo: "both", sortOrder: 0, archived: false, systemKey: null },
+  moneyMethod: { sortOrder: 0, archived: false },
+  transfer: { note: "", feeAmount: 0, feeTransactionId: null },
+  budget: { period: "month", active: true },
   checkin: {}, // Legacy/reserved: retained for old snapshots; no vNext creation flow.
   calendarCategory: { colorToken: "#b9aab6", icon: "", sortOrder: 0, archived: false },
   direction: {},
@@ -80,6 +85,7 @@ const legacyDefaults: Record<EntityType, Record<string, unknown>> = {
     showTaskDeadlines: true,
     dayStart: "07:00",
     dayEnd: "23:00",
+    defaultCalendarCategoryId: null,
   },
   conflict: { status: "open", choice: null, resolvedAt: null },
 };
@@ -87,6 +93,7 @@ const legacyDefaults: Record<EntityType, Record<string, unknown>> = {
 /** Only schema-v4 additions belong here. Legacy fields remain untouched. */
 const v4Defaults: Record<EntityType, Record<string, unknown>> = {
   task: { directionId: null, nextAction: null, estimatedRemainingMinutes: null },
+  taskAction: {},
   plan: {
     directionId: null,
     rescheduledFromPlanId: null,
@@ -134,6 +141,10 @@ const v4Defaults: Record<EntityType, Record<string, unknown>> = {
     outcome: null,
   },
   transaction: {},
+  moneyCategory: {},
+  moneyMethod: {},
+  transfer: {},
+  budget: {},
   checkin: {}, // Legacy/reserved compatibility only.
   calendarCategory: {},
   direction: { description: "", icon: "", colorToken: "", active: true, sortOrder: 0 },
@@ -145,6 +156,7 @@ const v4Defaults: Record<EntityType, Record<string, unknown>> = {
 /** Only schema-v5 additions belong here. */
 const v5Defaults: Record<EntityType, Record<string, unknown>> = {
   task: {},
+  taskAction: {},
   plan: {},
   actual: {},
   inbox: {},
@@ -164,6 +176,10 @@ const v5Defaults: Record<EntityType, Record<string, unknown>> = {
     outcome: null,
   },
   transaction: {},
+  moneyCategory: {},
+  moneyMethod: {},
+  transfer: {},
+  budget: {},
   checkin: {}, // Legacy/reserved compatibility only.
   calendarCategory: {},
   direction: {},
@@ -181,6 +197,7 @@ const v5Defaults: Record<EntityType, Record<string, unknown>> = {
 /** Only schema-v6 additions belong here. */
 const v6Defaults: Record<EntityType, Record<string, unknown>> = {
   task: {},
+  taskAction: {},
   plan: {
     source: null,
     generationState: null,
@@ -200,6 +217,10 @@ const v6Defaults: Record<EntityType, Record<string, unknown>> = {
   conditionRecord: {},
   executionSession: { outcome: null },
   transaction: {},
+  moneyCategory: {},
+  moneyMethod: {},
+  transfer: {},
+  budget: {},
   checkin: {}, // Legacy/reserved compatibility only.
   calendarCategory: {},
   direction: {},
@@ -223,6 +244,46 @@ const v6Defaults: Record<EntityType, Record<string, unknown>> = {
   },
   conflict: {},
 };
+
+/** Only schema-v7 additions belong here. */
+const v7Defaults: Record<EntityType, Record<string, unknown>> = {
+  task: {},
+  taskAction: {
+    status: "todo", sortOrder: 0, estimatedMinutes: null, minimumUsefulMinutes: null,
+    contexts: [], energyLevel: null, interruptible: true, setupCost: null, completedAt: null,
+  },
+  plan: { taskActionId: null },
+  actual: { taskActionId: null },
+  inbox: {},
+  routine: {},
+  routineOccurrence: {},
+  recurringActivityRule: {},
+  routineFlow: {},
+  routineRun: {},
+  sleepRecord: {},
+  conditionRecord: { startAssist: null, recoveryRequest: null },
+  executionSession: { taskActionId: null },
+  transaction: { categoryId: null, moneyMethodId: null, transferId: null },
+  moneyCategory: { appliesTo: "both", sortOrder: 0, archived: false, systemKey: null },
+  moneyMethod: { sortOrder: 0, archived: false },
+  transfer: { note: "", feeAmount: 0, feeTransactionId: null },
+  budget: { period: "month", active: true },
+  checkin: {},
+  calendarCategory: {},
+  direction: {},
+  project: {},
+  settings: { defaultCalendarCategoryId: null },
+  conflict: {},
+};
+
+export const FALLBACK_CALENDAR_CATEGORY_ID = "calendar_category_other";
+export const MONEY_OTHER_CATEGORY_ID = "money_category_other";
+export const MONEY_TRANSFER_FEE_CATEGORY_ID = "money_category_transfer_fee";
+export const DEFAULT_MONEY_METHODS = [
+  { id: "money_method_cash", name: "現金" },
+  { id: "money_method_bank", name: "銀行" },
+  { id: "money_method_card", name: "カード" },
+] as const;
 
 export const DEFAULT_DIRECTIONS = [
   {
@@ -326,6 +387,13 @@ export function migrateEntity(input: StoredEntity): CoreEntity {
       schemaVersion: 6,
     };
   }
+  if (entity.schemaVersion === 6) {
+    entity = {
+      ...entity,
+      payload: { ...v7Defaults[entity.type], ...entity.payload },
+      schemaVersion: 7,
+    };
+  }
   if (entity.schemaVersion !== CURRENT_SCHEMA_VERSION) {
     throw new Error(`migration_missing:${entity.schemaVersion}`);
   }
@@ -399,6 +467,110 @@ export function ensureDefaultMorningFlow(entities: CoreEntity[], metadata: Direc
   ];
 }
 
+const migrationEntity = (
+  id: string,
+  type: EntityType,
+  payload: Record<string, unknown>,
+  metadata: DirectionMetadata,
+): CoreEntity => {
+  const now = metadata.now || "1970-01-01T00:00:00.000Z";
+  return {
+    id, type, payload, schemaVersion: CURRENT_SCHEMA_VERSION, revision: 1,
+    createdAt: now, updatedAt: now, updatedBy: metadata.updatedBy || "migration:schema-v7", deletedAt: null,
+  };
+};
+
+const assertStableType = (entities: CoreEntity[], id: string, type: EntityType) => {
+  const collision = entities.find(entity => entity.id === id && entity.type !== type);
+  if (collision) throw new Error(`migration_id_collision:${id}`);
+};
+
+/** v7 makes every schedulable Plan and recurring rule category-explicit. */
+export function ensureCalendarCategoryDefaults(entities: CoreEntity[], metadata: DirectionMetadata = {}) {
+  let result = [...entities];
+  assertStableType(result, FALLBACK_CALENDAR_CATEGORY_ID, "calendarCategory");
+  if (!result.some(entity => entity.id === FALLBACK_CALENDAR_CATEGORY_ID)) {
+    result.push(migrationEntity(FALLBACK_CALENDAR_CATEGORY_ID, "calendarCategory", {
+      name: "その他", colorToken: "#b9aab6", icon: "", sortOrder: 999, archived: false,
+    }, metadata));
+  }
+  result = result.map(entity => {
+    if ((entity.type === "plan" || entity.type === "recurringActivityRule") && !entity.payload.calendarCategoryId)
+      return { ...entity, payload: { ...entity.payload, calendarCategoryId: FALLBACK_CALENDAR_CATEGORY_ID } };
+    if (entity.type === "settings" && !entity.payload.defaultCalendarCategoryId)
+      return { ...entity, payload: { ...entity.payload, defaultCalendarCategoryId: FALLBACK_CALENDAR_CATEGORY_ID } };
+    return entity;
+  });
+  return result;
+}
+
+/** Preserve legacy nextAction while creating its first-class equivalent once. */
+export function ensureLegacyTaskActions(entities: CoreEntity[], metadata: DirectionMetadata = {}) {
+  const result = [...entities];
+  for (const task of result.filter(entity => entity.type === "task" && !entity.deletedAt)) {
+    const next = task.payload.nextAction as Record<string, unknown> | null | undefined;
+    if (!next || typeof next.title !== "string" || !next.title.trim()) continue;
+    if (result.some(entity => entity.type === "taskAction" && entity.payload.taskId === task.id)) continue;
+    const id = `task_action_${task.id}_legacy`;
+    assertStableType(result, id, "taskAction");
+    result.push(migrationEntity(id, "taskAction", {
+      taskId: task.id, title: next.title.trim(), status: "todo", sortOrder: 0,
+      estimatedMinutes: next.estimatedMinutes ?? null,
+      minimumUsefulMinutes: next.minimumUsefulMinutes ?? null,
+      contexts: Array.isArray(next.contexts) ? next.contexts : [],
+      energyLevel: next.energyLevel ?? null, interruptible: next.interruptible ?? true,
+      setupCost: next.setupCost ?? null, completedAt: null,
+    }, metadata));
+  }
+  return result;
+}
+
+const stableHash = (value: string) => {
+  let hash = 2166136261;
+  for (const char of value) { hash ^= char.codePointAt(0) || 0; hash = Math.imul(hash, 16777619); }
+  return (hash >>> 0).toString(36);
+};
+
+/** Turn legacy free-text money categories into canonical entities and references. */
+export function ensureMoneyDefaults(entities: CoreEntity[], metadata: DirectionMetadata = {}) {
+  let result = [...entities];
+  const categoryDefinitions = [
+    { id: MONEY_OTHER_CATEGORY_ID, name: "その他", systemKey: "other", sortOrder: 998 },
+    { id: MONEY_TRANSFER_FEE_CATEGORY_ID, name: "振替手数料", systemKey: "transferFee", sortOrder: 999 },
+  ];
+  for (const definition of categoryDefinitions) {
+    assertStableType(result, definition.id, "moneyCategory");
+    if (!result.some(entity => entity.id === definition.id)) result.push(migrationEntity(definition.id, "moneyCategory", {
+      name: definition.name, appliesTo: "expense", sortOrder: definition.sortOrder,
+      archived: false, systemKey: definition.systemKey,
+    }, metadata));
+  }
+  const names = [...new Set(result.filter(entity => entity.type === "transaction")
+    .map(entity => String(entity.payload.category || "その他").trim() || "その他"))];
+  for (const name of names) {
+    if (result.some(entity => entity.type === "moneyCategory" && entity.payload.name === name)) continue;
+    const id = `money_category_${stableHash(name)}`;
+    assertStableType(result, id, "moneyCategory");
+    result.push(migrationEntity(id, "moneyCategory", {
+      name, appliesTo: "both", sortOrder: result.filter(entity => entity.type === "moneyCategory").length,
+      archived: false, systemKey: null,
+    }, metadata));
+  }
+  for (const [index, method] of DEFAULT_MONEY_METHODS.entries()) {
+    assertStableType(result, method.id, "moneyMethod");
+    if (!result.some(entity => entity.id === method.id)) result.push(migrationEntity(method.id, "moneyMethod", {
+      name: method.name, sortOrder: index, archived: false,
+    }, metadata));
+  }
+  result = result.map(entity => {
+    if (entity.type !== "transaction" || entity.payload.categoryId) return entity;
+    const name = String(entity.payload.category || "その他").trim() || "その他";
+    const category = result.find(candidate => candidate.type === "moneyCategory" && candidate.payload.name === name);
+    return { ...entity, payload: { ...entity.payload, categoryId: category?.id || MONEY_OTHER_CATEGORY_ID } };
+  });
+  return result;
+}
+
 /**
  * Schema v3 wrote both Plan.actualId and Actual.planId. If an old snapshot only
  * has the Plan-side pointer, promote that explicit one-to-one fact to the v4
@@ -422,7 +594,10 @@ export function backfillCanonicalActualPlanLinks(entities: CoreEntity[]) {
 
 export function migrateSnapshot(input: StoredEntity[], metadata: DirectionMetadata = {}) {
   const migrated = backfillCanonicalActualPlanLinks(input.map(migrateEntity));
-  const initialized = ensureDefaultMorningFlow(ensureDefaultDirections(migrated, metadata), metadata);
+  const initialized = ensureMoneyDefaults(
+    ensureLegacyTaskActions(ensureCalendarCategoryDefaults(ensureDefaultDirections(migrated, metadata), metadata), metadata),
+    metadata,
+  );
   assertNoEntityLoss(input, initialized);
   return initialized;
 }
@@ -443,7 +618,12 @@ export function createSnapshotMigrationPlan(
   const hasSchemaChanges = source.some(
     (entity) => Number(entity.schemaVersion || 1) !== CURRENT_SCHEMA_VERSION,
   );
-  const requiresWrite = hasSchemaChanges || addedEntities.length > 0;
+  const sourceById = new Map(source.map(entity => [entity.id, entity]));
+  const hasPayloadChanges = entities.some(entity => {
+    const original = sourceById.get(entity.id);
+    return Boolean(original && JSON.stringify(original.payload) !== JSON.stringify(entity.payload));
+  });
+  const requiresWrite = hasSchemaChanges || hasPayloadChanges || addedEntities.length > 0;
   return { entities, addedEntities, requiresBackup: requiresWrite, requiresWrite };
 }
 

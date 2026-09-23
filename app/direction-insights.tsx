@@ -21,7 +21,7 @@ const duration = (minutes: number) =>
 type Props = {
   entities: CoreEntity[];
   clock: Date;
-  create: (type: EntityType, payload: Record<string, unknown>) => Promise<void>;
+  create: (type: EntityType, payload: Record<string, unknown>) => Promise<CoreEntity>;
   update: (entity: CoreEntity, payload: Record<string, unknown>) => Promise<void>;
 };
 

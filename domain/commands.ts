@@ -6,6 +6,8 @@ import type {
   TaskData,
   TransactionData,
 } from "./core.ts";
+import { FALLBACK_CALENDAR_CATEGORY_ID } from "./schema.ts";
+import { createApplicationEntities, createApplicationEntity } from "./application-actions.ts";
 
 export type LiflowCommand =
   | { type: "CREATE_TASK"; title: string; deadline?: string | null }
@@ -88,14 +90,15 @@ export async function executeCommand(
       status: "open",
       completedAt: null,
     };
-    return { kind: "created", entity: await port.create("task", payload) };
+    return { kind: "created", entity: await createApplicationEntity(port, "task", payload) };
   }
   if (command.type === "CREATE_PLAN") {
     const payload: PlanData = {
       title: command.title.trim(),
       taskId: command.taskId || null,
+      taskActionId: null,
       projectId: null,
-      calendarCategoryId: null,
+      calendarCategoryId: FALLBACK_CALENDAR_CATEGORY_ID,
       directionId: null,
       startAt: command.startAt,
       endAt: command.endAt,
@@ -106,12 +109,13 @@ export async function executeCommand(
       rescheduledFromPlanId: null,
       rescheduledToPlanId: null,
     };
-    return { kind: "created", entity: await port.create("plan", payload) };
+    return { kind: "created", entity: await createApplicationEntity(port, "plan", payload) };
   }
   if (command.type === "CREATE_ACTUAL") {
     const payload: ActualData = {
       title: command.title.trim(),
       taskId: null,
+      taskActionId: null,
       planId: command.planId || null,
       projectId: null,
       calendarCategoryId: null,
@@ -121,13 +125,16 @@ export async function executeCommand(
       type: "personal",
       note: "",
     };
-    return { kind: "created", entity: await port.create("actual", payload) };
+    return { kind: "created", entity: await createApplicationEntity(port, "actual", payload) };
   }
   const payload: TransactionData = {
     title: command.title.trim(),
     amount: Math.abs(command.amount),
     direction: command.direction,
     category: command.category?.trim() || "その他",
+    categoryId: null,
+    moneyMethodId: null,
+    transferId: null,
     occurredAt: command.occurredAt,
     status: "settled",
     projectId: null,
@@ -136,7 +143,7 @@ export async function executeCommand(
     taskId: null,
     note: command.note?.trim() || "",
   };
-  return { kind: "created", entity: await port.create("transaction", payload) };
+  return { kind: "created", entity: await createApplicationEntity(port, "transaction", payload) };
 }
 
 export function parseCommandBatch(input: string, now = new Date()) {
@@ -170,7 +177,7 @@ export async function executeCommandBatch(
   const inputs = commands.map((command) =>
     commandInput(command as Exclude<LiflowCommand, { type: "SHOW_NOW" }>),
   );
-  const entities = await port.createMany(inputs);
+  const entities = await createApplicationEntities(port, inputs);
   return entities.map((entity) => ({ kind: "created", entity }));
 }
 
@@ -190,8 +197,8 @@ export function commandInput(command: Exclude<LiflowCommand, { type: "SHOW_NOW" 
     return {
       type: "plan" as const,
       payload: {
-        title: command.title.trim(), taskId: command.taskId || null, projectId: null,
-        calendarCategoryId: null, directionId: null, startAt: command.startAt, endAt: command.endAt,
+        title: command.title.trim(), taskId: command.taskId || null, taskActionId: null, projectId: null,
+        calendarCategoryId: FALLBACK_CALENDAR_CATEGORY_ID, directionId: null, startAt: command.startAt, endAt: command.endAt,
         type: "personal", flexibility: "fixed", allDay: false, resolution: null,
         rescheduledFromPlanId: null, rescheduledToPlanId: null,
       } satisfies PlanData,
@@ -200,7 +207,7 @@ export function commandInput(command: Exclude<LiflowCommand, { type: "SHOW_NOW" 
     return {
       type: "actual" as const,
       payload: {
-        title: command.title.trim(), taskId: null, planId: command.planId || null,
+        title: command.title.trim(), taskId: null, taskActionId: null, planId: command.planId || null,
         projectId: null, calendarCategoryId: null, directionId: null, startAt: command.startAt,
         endAt: command.endAt, type: "personal", note: "",
       } satisfies ActualData,
@@ -209,7 +216,7 @@ export function commandInput(command: Exclude<LiflowCommand, { type: "SHOW_NOW" 
     type: "transaction" as const,
     payload: {
       title: command.title.trim(), amount: Math.abs(command.amount), direction: command.direction,
-      category: command.category?.trim() || "その他", occurredAt: command.occurredAt, status: "settled",
+      category: command.category?.trim() || "その他", categoryId: null, moneyMethodId: null, transferId: null, occurredAt: command.occurredAt, status: "settled",
       projectId: null, actualId: null, planId: null, taskId: null,
       note: command.note?.trim() || "",
     } satisfies TransactionData,
@@ -221,8 +228,18 @@ const localIso = (date: string, time: string) => {
   return Number.isFinite(value.getTime()) ? value.toISOString() : "";
 };
 const moneyText = (raw: string) => {
-  const match = raw.trim().match(/^(.*?)\s+--note\s+(.+)$/i);
-  return { title: (match?.[1] || raw).trim(), note: match?.[2]?.trim() || "" };
+  const normalized = raw.replaceAll("　", " ").trim();
+  const flags = [...normalized.matchAll(/(?:^|\s)--(category|note)\s+/gi)];
+  const title = normalized.slice(0, flags[0]?.index ?? normalized.length).trim();
+  let category = title, note = "";
+  flags.forEach((flag, index) => {
+    const start = (flag.index || 0) + flag[0].length;
+    const end = flags[index + 1]?.index ?? normalized.length;
+    const value = normalized.slice(start, end).trim();
+    if (flag[1].toLowerCase() === "category") category = value || title;
+    else note = value;
+  });
+  return { title, category, note };
 };
 export function parseCommand(
   input: string,
@@ -246,7 +263,7 @@ export function parseCommand(
         ? "income"
         : "expense",
       title: details.title,
-      category: details.title,
+      category: details.category,
       note: details.note,
       occurredAt,
     };
@@ -259,7 +276,7 @@ export function parseCommand(
       amount: Number(money[1].replaceAll(",", "")),
       direction: "expense",
       title: details.title,
-      category: details.title,
+      category: details.category,
       note: details.note,
       occurredAt: now.toISOString(),
     };
@@ -272,7 +289,7 @@ export function parseCommand(
       amount: Number(income[1].replaceAll(",", "")),
       direction: "income",
       title: details.title,
-      category: details.title,
+      category: details.category,
       note: details.note,
       occurredAt: now.toISOString(),
     };

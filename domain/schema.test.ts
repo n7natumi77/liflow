@@ -184,7 +184,7 @@ test("migration plan requires a safety backup and becomes idempotent", () => {
   const source = [stored("task", "task", { title: "A", status: "open" })];
   const first = createSnapshotMigrationPlan(source, { now: "2026-01-01T00:00:00.000Z" });
   assert.equal(first.requiresBackup, true);
-  assert.equal(first.addedEntities.length, 6);
+  assert.equal(first.addedEntities.length, 11);
   const second = createSnapshotMigrationPlan(first.entities, { now: "2026-02-01T00:00:00.000Z" });
   assert.equal(second.requiresBackup, false);
   assert.equal(second.addedEntities.length, 0);
@@ -233,8 +233,10 @@ test("v4 entity families migrate through v5 to v6 without payload loss", () => {
   ];
   const result = migrateSnapshot(source);
   for (const entity of source) {
-    assert.deepEqual(result.find((item) => item.id === entity.id)?.payload, entity.payload);
+    const payload = result.find((item) => item.id === entity.id)?.payload || {};
+    for (const [key, value] of Object.entries(entity.payload)) assert.deepEqual(payload[key], value);
   }
+  assert.equal(result.find(item => item.id === "rule")?.payload.calendarCategoryId, "calendar_category_other");
 });
 
 test("v4 settings gain the Phase 1 safety controls and execution sessions are registered", () => {

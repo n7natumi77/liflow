@@ -56,6 +56,16 @@ test("money command accepts a memo after --note", () =>
     note: "抜歯代、矯正の診察代",
     occurredAt: new Date("2026-05-01T12:00:00").toISOString(),
   }));
+test("dated money command accepts an explicit category", () => {
+  assert.deepEqual(parseCommand("/m 2026-09-20 220 越中宮崎→泊 --category 交通費"), {
+    type: "CREATE_TRANSACTION", amount: 220, direction: "expense", title: "越中宮崎→泊",
+    category: "交通費", note: "", occurredAt: new Date("2026-09-20T12:00:00").toISOString(),
+  });
+  assert.deepEqual(parseCommand("/m 2026-09-18 159 Suica物販 --category その他　"), {
+    type: "CREATE_TRANSACTION", amount: 159, direction: "expense", title: "Suica物販",
+    category: "その他", note: "", occurredAt: new Date("2026-09-18T12:00:00").toISOString(),
+  });
+});
 test("invalid time is rejected before persistence", () =>
   assert.throws(
     () =>

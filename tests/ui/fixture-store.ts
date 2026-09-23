@@ -1,7 +1,7 @@
 /* Only the isolated UI test server aliases firebase-store to this module.
    There is no Firebase import, connection, or persistence in this fixture. */
 import { inheritedDirection, type CoreEntity, type EntityType, type PlanData, type ActualData, type ConflictData, type ExecutionOutcome, type ExecutionSessionData, type RoutineFlowData, type RoutineRunData, type SleepRecordData, type TaskData } from "../../domain/core";
-import { CURRENT_SCHEMA_VERSION, DEFAULT_DIRECTIONS, DEFAULT_MORNING_FLOW, DEFAULT_MORNING_FLOW_ID } from "../../domain/schema";
+import { CURRENT_SCHEMA_VERSION, DEFAULT_DIRECTIONS, DEFAULT_MORNING_FLOW, DEFAULT_MORNING_FLOW_ID, MONEY_OTHER_CATEGORY_ID, MONEY_TRANSFER_FEE_CATEGORY_ID } from "../../domain/schema";
 import { completionPayloads, executionActualId, startRoutineRunPayload } from "../../domain/execution";
 import { planRecurringMutations, protectGeneratedPlanEdit } from "../../domain/recurrence";
 import { planFutureBlocks } from "../../domain/future-blocks";
@@ -16,12 +16,23 @@ let entities = [
   entity("study", "calendarCategory", { name: "勉強", colorToken: "#b9a1e3", sortOrder: 0, archived: false }),
   entity("school", "calendarCategory", { name: "大学", colorToken: "#93c5e5", sortOrder: 1, archived: false }),
   entity("life", "calendarCategory", { name: "生活", colorToken: "#eaa6c4", sortOrder: 2, archived: false }),
+  entity(MONEY_OTHER_CATEGORY_ID, "moneyCategory", { name: "その他", appliesTo: "both", sortOrder: 0, archived: false, systemKey: "other" }),
+  entity(MONEY_TRANSFER_FEE_CATEGORY_ID, "moneyCategory", { name: "振替手数料", appliesTo: "expense", sortOrder: 99, archived: false, systemKey: "transferFee" }),
+  entity("money_transport", "moneyCategory", { name: "交通費", appliesTo: "expense", sortOrder: 1, archived: false, systemKey: null }),
+  entity("money_study", "moneyCategory", { name: "勉強", appliesTo: "expense", sortOrder: 2, archived: false, systemKey: null }),
+  entity("money_salary", "moneyCategory", { name: "給与", appliesTo: "income", sortOrder: 3, archived: false, systemKey: null }),
+  entity("money_method_cash", "moneyMethod", { name: "現金", sortOrder: 0, archived: false }),
+  entity("money_method_bank", "moneyMethod", { name: "銀行", sortOrder: 1, archived: false }),
+  entity("money_method_card", "moneyMethod", { name: "カード", sortOrder: 2, archived: false }),
   entity("project", "project", { name: "秋学期の準備", description: "新しい学期に向けて、授業と自分のペースを整える。", status: "active", calendarCategoryId: "study", parentProjectId: null }),
   entity("subproject", "project", { name: "物理の復習", status: "active", calendarCategoryId: "study", parentProjectId: "project" }),
   entity("task1", "task", { title: "英単語の復習", status: "open", deadline: at("23:59"), projectId: "project", calendarCategoryId: "study", estimateMinutes: 30 }),
   entity("task2", "task", { title: "レポートの下書き", status: "open", deadline: "2026-09-18T14:59:00Z", projectId: "project" }),
   entity("task3", "task", { title: "帰りに買い物", status: "open", deadline: null }),
   entity("task4", "task", { title: "レポートに使う資料を3本読む", status: "open", parentTaskId: "task2", projectId: "project", estimateMinutes: 45, deadline: "2026-09-19T14:59:00Z" }),
+  entity("action1", "taskAction", { taskId: "task1", title: "単語帳を開く", status: "todo", sortOrder: 0, estimatedMinutes: 15 }),
+  entity("action2", "taskAction", { taskId: "task1", title: "20語確認する", status: "todo", sortOrder: 1, estimatedMinutes: 15 }),
+  entity("action3", "taskAction", { taskId: "task2", title: "見出しを書く", status: "todo", sortOrder: 0, estimatedMinutes: 20 }),
   plan("lecture", "物理学の授業", "09:00", "10:30", "school"),
   plan("library", "図書館で資料探し", "11:00", "12:00", "school"),
   plan("review", "今日の復習", "15:00", "16:30"),
@@ -52,10 +63,11 @@ let entities = [
   entity("weekendRoutine", "routine", { title: "部屋を整える", description: "窓を開けて、本棚と机の上を片づける。", active: true, preferredTime: "10:00", expectedDuration: 45, scheduleRule: { kind: "weekly", weekdays: [6] }, calendarCategoryId: "life" }),
   entity("pausedRoutine", "routine", { title: "朝の散歩", active: false, preferredTime: "07:30", expectedDuration: 20, scheduleRule: { kind: "daily" }, calendarCategoryId: "life" }),
   entity("note1", "inbox", { text: "来週のゼミの持ち物を確認", sorted: false }),
-  entity("money1", "transaction", { title: "電車", amount: 420, direction: "expense", category: "交通", occurredAt: at("08:00"), status: "settled" }),
-  entity("money2", "transaction", { title: "参考書の代金", amount: 2000, direction: "expense", category: "勉強", occurredAt: at("08:00"), expectedAt: at("10:00"), status: "expected", projectId: "project", taskId: "task2", planId: "library", actualId: "actual2", note: "ゼミで使う参考書" }),
-  entity("income", "transaction", { title: "アルバイトの給与", amount: 28000, direction: "income", category: "給与", occurredAt: "2026-09-15T03:00:00Z", status: "settled" }),
-  entity("settings", "settings", { calendarView: "day", visibleCalendarCategories: [], showPlan: true, showActual: true, showTaskDeadlines: true, dayStart: "07:00", dayEnd: "23:00", guidanceIntensity: "strong", transitionBufferMinutes: 10, departureSafetyBufferMinutes: 10, targetSleepTime: "23:30", windDownMinutes: 45, fallbackWakeTime: "08:00", wakeWindowMinutes: 180, notificationsEnabled: false, wakeNotifications: true, anchorNotifications: true, departureNotifications: true, executionNotifications: true, windDownNotifications: true }),
+  entity("money1", "transaction", { title: "電車", amount: 420, direction: "expense", category: "交通費", categoryId: "money_transport", moneyMethodId: "money_method_card", occurredAt: at("08:00"), status: "settled" }),
+  entity("money2", "transaction", { title: "参考書の代金", amount: 2000, direction: "expense", category: "勉強", categoryId: "money_study", moneyMethodId: "money_method_card", occurredAt: at("08:00"), expectedAt: at("18:00"), status: "expected", projectId: "project", taskId: "task2", planId: "library", actualId: "actual2", note: "ゼミで使う参考書" }),
+  entity("income", "transaction", { title: "アルバイトの給与", amount: 28000, direction: "income", category: "給与", categoryId: "money_salary", moneyMethodId: "money_method_bank", occurredAt: "2026-09-15T03:00:00Z", status: "settled" }),
+  entity("budget-study", "budget", { categoryId: "money_study", period: "month", amount: 10000, active: true }),
+  entity("settings", "settings", { calendarView: "day", visibleCalendarCategories: [], showPlan: true, showActual: true, showTaskDeadlines: true, defaultCalendarCategoryId: "study", dayStart: "07:00", dayEnd: "23:00", guidanceIntensity: "strong", transitionBufferMinutes: 10, departureSafetyBufferMinutes: 10, targetSleepTime: "23:30", windDownMinutes: 45, fallbackWakeTime: "08:00", wakeWindowMinutes: 180, notificationsEnabled: false, wakeNotifications: true, anchorNotifications: true, departureNotifications: true, executionNotifications: true, windDownNotifications: true }),
 ];
 let notificationJobs: NotificationJobData[] = [];
 type Listener = (items: CoreEntity[]) => void;
@@ -114,8 +126,9 @@ export async function updateEntity(_uid: string, old: CoreEntity, payload: Recor
 export async function listBackups() { return []; }
 export async function restoreBackup() { throw new Error("not_available_in_fixture"); }
 export async function resolveConflict(_uid: string, conflict: CoreEntity<ConflictData>) { return { resolvedTarget: conflict, resolvedConflict: conflict }; }
-export async function postponePlan(uid: string, old: CoreEntity<PlanData>) {
-  const nextPlan = await createEntity(uid, "plan", { ...old.payload, actualId: null, startAt: new Date(+new Date(old.payload.startAt) + 86400000).toISOString(), endAt: new Date(+new Date(old.payload.endAt) + 86400000).toISOString(), resolution: null, rescheduledFromPlanId: old.id, rescheduledToPlanId: null });
+export async function postponePlan(uid: string, old: CoreEntity<PlanData>, destination: number | { startAt: string; endAt: string } = 1) {
+  const range = typeof destination === "number" ? { startAt: new Date(+new Date(old.payload.startAt) + destination * 86400000).toISOString(), endAt: new Date(+new Date(old.payload.endAt) + destination * 86400000).toISOString() } : destination;
+  const nextPlan = await createEntity(uid, "plan", { ...old.payload, actualId: null, ...range, resolution: null, rescheduledFromPlanId: old.id, rescheduledToPlanId: null });
   const resolved = await updateEntity(uid, old, { ...old.payload, resolution: "postponed", rescheduledToPlanId: nextPlan.id });
   return { nextPlan, resolved };
 }
