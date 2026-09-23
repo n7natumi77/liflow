@@ -23,52 +23,49 @@ export async function phase2Checks({ page, snapshot, get, mainTab, menuTab, wait
   await screenshot("desktop-tasks");
   check("Task hierarchy, search and reversible completion preserve IDs and Plans");
 
-  await menuTab("プロジェクト");
-  await screenshot("desktop-projects");
-  await page.locator('[data-project-id="project"]').getByRole("button", { name: "編集", exact: true }).click();
-  assert.equal(await page.getByLabel("親プロジェクト", { exact: true }).locator('option[value="subproject"]').count(), 0);
-  const project = await get("project");
-  await page.getByLabel("説明", { exact: true }).fill(project.payload.description + "\n週末は無理をしない。");
-  await page.evaluate(() => window.__liflowFixture.failNext());
+  const legacyTask = await get("task4");
+  await page.locator('[data-task-id="task4"] .task-summary').click();
+  assert.equal(await page.getByLabel("プロジェクト", { exact: true }).count(), 0);
+  assert.equal(await page.getByLabel("親タスク", { exact: true }).count(), 0);
+  await page.getByLabel("名前", { exact: true }).fill("レポートに使う資料を3本読む・確認済み");
   await save();
-  await page.locator("dialog .section-error").waitFor();
-  assert.deepEqual(await get("project"), project);
-  assert.ok((await page.getByLabel("説明", { exact: true }).inputValue()).includes("週末"));
-  await save(); await page.locator("dialog[open]").waitFor({ state: "detached" });
-  assert.equal((await get("project")).payload.calendarCategoryId, project.payload.calendarCategoryId);
-  assert.equal((await get("project")).revision, project.revision + 1);
-  await page.locator('[data-project-id="subproject"]').getByRole("button", { name: "子プロジェクトを追加", exact: true }).click();
-  await page.getByLabel("名前", { exact: true }).fill("力学の演習"); await save();
-  const child = (await snapshot()).find(e => e.payload.name === "力学の演習"); assert.equal(child.payload.parentProjectId, "subproject");
-  await page.locator('[data-project-id="subproject"]').getByRole("button", { name: "編集", exact: true }).click();
-  await page.getByLabel("状態", { exact: true }).selectOption("archived"); await save();
-  assert.equal(await page.locator(`[data-project-id="${child.id}"]`).count(), 1);
-  await page.locator('[aria-label="プロジェクトの表示"]').getByRole("button", { name: "アーカイブ", exact: true }).click();
-  await page.locator('[data-project-id="subproject"]').getByRole("button", { name: "編集", exact: true }).click();
-  await page.getByLabel("状態", { exact: true }).selectOption("active"); await save();
-  check("Project editor prevents cycles, preserves drafts on failure, and keeps children reachable after archiving");
+  const preservedTask = await get("task4");
+  assert.equal(preservedTask.payload.projectId, legacyTask.payload.projectId);
+  assert.equal(preservedTask.payload.parentTaskId, legacyTask.payload.parentTaskId);
+  const menu = page.locator(".diary-menu");
+  if (!await menu.getAttribute("open")) await menu.locator("summary").click();
+  assert.equal(await menu.locator('[data-tab="projects"]').count(), 0);
+  await menu.locator("summary").click();
+  check("Project is absent from normal navigation and editors while legacy Task relations survive edits");
+
+  await mainTab("今");
+  await page.getByRole("button", { name: "今むり", exact: true }).click();
+  assert.equal(await page.getByRole("button", { name: /今はできない/ }).count(), 1);
+  assert.equal(await page.getByRole("button", { name: /取りかかりにくい/ }).count(), 1);
+  await page.getByRole("button", { name: /今はできない/ }).click();
+  await page.getByRole("button", { name: "場所・道具がない", exact: true }).click();
+  await waitFor(async () => (await snapshot()).some(e => e.type === "conditionRecord" && e.payload.startAssist?.reason === "contextUnavailable"));
+  check("Start Assist separates friction from temporary unavailability and records diagnostics without changing urgency data");
 
   await menuTab("ルーティン"); await screenshot("desktop-routines");
-  await page.locator('[aria-label="ルーティンの表示"]').getByRole("button", { name: "すべて", exact: true }).click();
-  const routine = await get("weekendRoutine");
-  await page.getByRole("button", { name: "部屋を整えるを編集", exact: true }).click();
-  assert.equal(await page.getByLabel("所要時間（分）", { exact: true }).inputValue(), "45");
-  await page.getByLabel("名前", { exact: true }).fill("週末に部屋を整える"); await save();
-  const edited = await get("weekendRoutine");
-  assert.equal(edited.payload.description, routine.payload.description);
-  assert.equal(edited.payload.expectedDuration, 45);
-  assert.deepEqual(edited.payload.scheduleRule, routine.payload.scheduleRule);
-  await page.locator('[aria-label="ルーティンの表示"]').getByRole("button", { name: "休止中", exact: true }).click();
-  await page.getByRole("button", { name: "朝の散歩を編集", exact: true }).click();
-  await page.getByLabel("有効にする", { exact: true }).check(); await save();
-  await page.locator('[aria-label="ルーティンの表示"]').getByRole("button", { name: "今日", exact: true }).click();
-  const routineCard = page.locator('[data-routine-id="pausedRoutine"]');
-  await routineCard.getByRole("button", { name: "実施", exact: true }).click();
-  const occurrence = (await snapshot()).find(e => e.type === "routineOccurrence" && e.payload.routineId === "pausedRoutine" && !e.deletedAt);
-  assert.ok(occurrence); await routineCard.getByRole("button", { name: "記録を戻す", exact: true }).click();
-  assert.ok((await get(occurrence.id)).deletedAt);
-  assert.equal((await get("pausedRoutine")).payload.active, true);
-  check("Routine edit retains duration, description and weekly rule; resume and undo write only their own entities");
+  assert.equal(await page.getByText("ストレッチ", { exact: true }).count(), 0);
+  assert.equal(await page.locator('[aria-label="ルーティンの表示"]').count(), 0);
+  await page.getByRole("button", { name: "手順を追加", exact: true }).click();
+  await page.getByLabel("名前", { exact: true }).fill("夜の確認");
+  await page.getByLabel(/手順（1行1件/).fill("机を整える | 確認 | 3");
+  await save();
+  const flowCard = page.locator(".routine-card").filter({ hasText: "夜の確認" });
+  await flowCard.getByRole("button", { name: "開始", exact: true }).click();
+  await waitFor(async () => (await snapshot()).some(e => e.type === "routineRun" && e.payload.status === "running"));
+  await page.evaluate(() => window.__liflowFixture.emptyTypes(["routineRun"]));
+  check("Routine page exposes only recurring schedules and executable Routine Flows, not legacy trackers");
+
+  await menuTab("設定");
+  await page.getByText("件数を見る", { exact: true }).click();
+  assert.ok((await page.locator(".legacy-data-viewer").innerText()).includes("旧Project"));
+  assert.equal((await snapshot()).filter(e => e.type === "project" && !e.deletedAt).length, 2);
+  assert.equal((await snapshot()).filter(e => e.type === "routine" && !e.deletedAt).length, 5);
+  check("Settings exposes legacy data read-only and leaves stored Project and Routine records intact");
 
   await menuTab("お金"); await screenshot("desktop-money");
   assert.ok((await page.locator(".money-overview .expense").innerText()).includes("¥420"));
@@ -185,7 +182,7 @@ export async function phase2MobileChecks({ page, mainTab, menuTab, check, screen
     assert.ok((await page.locator('.month-agenda').innerText()).includes("週末の小旅行"));
     await fits(); if (width === 390) await screenshot("mobile-month");
     for (const [label, file] of [["タスク", "tasks"], ["未整理", "inbox"]]) { await mainTab(label); await fits(); if (width === 390) await screenshot("mobile-" + file); }
-    for (const [label, file] of [["プロジェクト", "projects"], ["ルーティン", "routines"], ["お金", "money"]]) { await menuTab(label); await fits(); if (width === 390) await screenshot("mobile-" + file); }
+    for (const [label, file] of [["ルーティン", "routines"], ["お金", "money"]]) { await menuTab(label); await fits(); if (width === 390) await screenshot("mobile-" + file); }
     await page.locator('[data-transaction-id="money2"]').click(); await fits();
     assert.ok((await page.getByLabel("金額（円）", { exact: true }).boundingBox()).width > 80);
     if (width === 390) await screenshot("mobile-money-editor");

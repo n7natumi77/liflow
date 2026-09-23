@@ -247,6 +247,7 @@ test("v4 settings gain the Phase 1 safety controls and execution sessions are re
   assert.equal(settings.payload.windDownMinutes, 45);
   assert.equal(session.payload.status, "running");
   assert.equal(session.payload.actualId, null);
+  assert.equal(session.payload.outcome, null);
 });
 
 test("v5 Plans and Settings gain Phase 2 automation and notification defaults", () => {

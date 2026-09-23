@@ -1,6 +1,6 @@
 /* Only the isolated UI test server aliases firebase-store to this module.
    There is no Firebase import, connection, or persistence in this fixture. */
-import { inheritedDirection, type CoreEntity, type EntityType, type PlanData, type ActualData, type ConflictData, type ExecutionSessionData, type RoutineFlowData, type RoutineRunData, type SleepRecordData, type TaskData } from "../../domain/core";
+import { inheritedDirection, type CoreEntity, type EntityType, type PlanData, type ActualData, type ConflictData, type ExecutionOutcome, type ExecutionSessionData, type RoutineFlowData, type RoutineRunData, type SleepRecordData, type TaskData } from "../../domain/core";
 import { CURRENT_SCHEMA_VERSION, DEFAULT_DIRECTIONS, DEFAULT_MORNING_FLOW, DEFAULT_MORNING_FLOW_ID } from "../../domain/schema";
 import { completionPayloads, executionActualId, startRoutineRunPayload } from "../../domain/execution";
 import { planRecurringMutations, protectGeneratedPlanEdit } from "../../domain/recurrence";
@@ -27,6 +27,12 @@ let entities = [
   plan("review", "今日の復習", "15:00", "16:30"),
   plan("overlap", "レポートの相談", "15:30", "16:00", "school"),
   plan("evening", "過去問を解く", "18:00", "19:00"),
+  plan("compact-plan-1", "1分の予定", "20:30", "20:31"),
+  plan("compact-plan-2", "2分の予定", "20:31", "20:33"),
+  plan("compact-plan-5", "5分の予定", "20:33", "20:38"),
+  plan("compact-plan-10", "10分の予定", "20:38", "20:48"),
+  plan("compact-plan-30", "30分の予定", "20:48", "21:18"),
+  plan("compact-plan-60", "60分の予定", "19:00", "20:00"),
   entity("container", "plan", { title: "秋学期", startAt: at("00:00"), endAt: at("23:59"), type: "container", allDay: false, flexibility: "fixed" }),
   entity("cancelled", "plan", { title: "延期した予定", startAt: at("17:00"), endAt: at("18:00"), type: "task", allDay: false, resolution: "postponed" }),
   entity("overnight", "plan", { title: "夜行バスで移動", startAt: "2026-09-17T14:00:00Z", endAt: "2026-09-17T21:00:00Z", type: "travel", allDay: false, flexibility: "fixed", calendarCategoryId: "life" }),
@@ -34,6 +40,12 @@ let entities = [
   entity("seminar", "plan", { title: "ゼミの発表", startAt: "2026-09-17T04:00:00Z", endAt: "2026-09-17T05:30:00Z", type: "appointment", allDay: false, flexibility: "fixed", calendarCategoryId: "school" }),
   entity("actual1", "actual", { title: "物理学の授業", startAt: at("09:05"), endAt: at("10:25"), planId: "lecture", type: "task" }),
   entity("actual2", "actual", { title: "図書館で資料探し", startAt: at("11:10"), endAt: at("12:00"), planId: "library", type: "task" }),
+  entity("compact-actual-1", "actual", { title: "1分の実績", startAt: at("20:30"), endAt: at("20:31"), planId: null, type: "task", calendarCategoryId: "study" }),
+  entity("compact-actual-2", "actual", { title: "2分の実績", startAt: at("20:31"), endAt: at("20:33"), planId: null, type: "task", calendarCategoryId: "study" }),
+  entity("compact-actual-5", "actual", { title: "5分の実績", startAt: at("20:33"), endAt: at("20:38"), planId: null, type: "task", calendarCategoryId: "study" }),
+  entity("compact-actual-10", "actual", { title: "10分の実績", startAt: at("20:38"), endAt: at("20:48"), planId: null, type: "task", calendarCategoryId: "study" }),
+  entity("compact-actual-30", "actual", { title: "30分の実績", startAt: at("20:48"), endAt: at("21:18"), planId: null, type: "task", calendarCategoryId: "study" }),
+  entity("compact-actual-60", "actual", { title: "60分の実績", startAt: at("19:00"), endAt: at("20:00"), planId: null, type: "task", calendarCategoryId: "study" }),
   entity("routine1", "routine", { title: "ストレッチ", active: true, preferredTime: "16:00", expectedDuration: 5, scheduleRule: { kind: "daily" }, calendarCategoryId: "life" }),
   entity("routine2", "routine", { title: "夕食の準備", active: true, preferredTime: "17:30", expectedDuration: 30, scheduleRule: { kind: "daily" }, calendarCategoryId: "life" }),
   entity("routine3", "routine", { title: "日記をつける", active: true, preferredTime: "22:00", expectedDuration: 15, scheduleRule: { kind: "daily" } }),
@@ -67,7 +79,7 @@ export async function startExecutionSession(uid: string, payload: ExecutionSessi
   if (entities.some(item => item.type === "executionSession" && (item.payload as ExecutionSessionData).status === "running")) throw new Error("execution_already_running");
   return createEntity(uid, "executionSession", payload) as Promise<CoreEntity<ExecutionSessionData>>;
 }
-export async function completeExecutionSession(uid: string, session: CoreEntity<ExecutionSessionData>, endedAt: string, completeTask = false) {
+export async function completeExecutionSession(uid: string, session: CoreEntity<ExecutionSessionData>, endedAt: string, outcome: ExecutionOutcome = "activityCompleted", completeTask = false) {
   const current = entities.find(item => item.id === session.id) as CoreEntity<ExecutionSessionData> | undefined;
   const actualId = executionActualId(session.id);
   const existingActual = entities.find(item => item.id === actualId) as CoreEntity<ActualData> | undefined;
@@ -75,7 +87,7 @@ export async function completeExecutionSession(uid: string, session: CoreEntity<
   const task = entities.find(item => item.id === current?.payload.taskId) as CoreEntity<TaskData> | undefined;
   const payloads = completionPayloads(current || session, new Date(endedAt), task);
   const actual = existingActual || { ...entity(actualId, "actual", payloads.actual), payload: payloads.actual } as CoreEntity<ActualData>;
-  const completed = { ...(current || session), payload: { ...(current || session).payload, status: "completed" as const, endedAt, actualId }, revision: (current || session).revision + 1 };
+  const completed = { ...(current || session), payload: { ...(current || session).payload, status: "completed" as const, endedAt, actualId, outcome: completeTask ? "activityCompleted" as const : outcome }, revision: (current || session).revision + 1 };
   const updatedTask = task ? { ...task, payload: { ...(payloads.nextTask || task.payload), status: completeTask ? "completed" as const : task.payload.status, completedAt: completeTask ? endedAt : task.payload.completedAt }, revision: task.revision + 1 } : null;
   entities = [...entities.filter(item => item.id !== completed.id && item.id !== actual.id && item.id !== updatedTask?.id), completed, actual, ...(updatedTask ? [updatedTask] : [])]; emit();
   return { session: completed, actual, task: updatedTask, created: !existingActual };

@@ -7,7 +7,7 @@ import {
   type SettingsData,
   type SleepRecordData,
 } from "./core.ts";
-import { reserveDeadlines } from "./scheduling.ts";
+import { isPlanActivityCompleted, reserveDeadlines } from "./scheduling.ts";
 import { getWakeWindow, localDateKey } from "./wake.ts";
 
 export type NotificationKind = "wake" | "morning" | "anchor" | "departure" | "execution" | "windDown";
@@ -147,6 +147,7 @@ export function buildNotificationJobs(uid: string, entities: CoreEntity[], now: 
         !plan.payload.allDay &&
         plan.payload.type !== "container" &&
         plan.payload.flexibility === "fixed" &&
+        !isPlanActivityCompleted(entities, plan.id) &&
         new Date(plan.payload.startAt).getTime() > now.getTime() &&
         new Date(plan.payload.startAt).getTime() <= horizon,
     )

@@ -11,7 +11,9 @@ import { phase3DesktopChecks, phase3SimpleCheck, phase3MobileChecks, phase3Empty
 const root = fileURLToPath(new URL("../", import.meta.url));
 const artifacts = path.join(root, "artifacts/diary/phase3");
 await fs.mkdir(artifacts, { recursive: true });
-await fs.rm(path.join(artifacts, "failure.png"), { force: true });
+for (const stale of ["failure.png", "desktop-projects.png", "mobile-projects.png"]) {
+  await fs.rm(path.join(artifacts, stale), { force: true });
+}
 const server = await createServer({
   configFile: false, root: path.join(root, "tests/ui"), publicDir: path.join(root, "public"),
   plugins: [react()], logLevel: "error",
@@ -61,10 +63,10 @@ try {
   assert.equal(await page.locator(".focus-sticker h2").innerText(), recommendedTitle);
   check("Now chooses one Task and persists a running Execution Session");
   await page.clock.fastForward(60000);
-  await page.locator(".focus-sticker").getByRole("button", { name: "終わる", exact: true }).click();
+  await page.locator(".focus-sticker").getByRole("button", { name: "この作業は終わった", exact: true }).click();
   await waitFor(async () => (await snapshot()).some(e => e.type === "actual" && e.id.startsWith("actual_execution_")));
-  assert.ok((await snapshot()).some(e => e.type === "executionSession" && e.payload.status === "completed"));
-  check("Ending the Session creates one linked Actual and recalculates Now");
+  assert.ok((await snapshot()).some(e => e.type === "executionSession" && e.payload.status === "completed" && e.payload.outcome === "activityCompleted"));
+  check("Explicit Activity completion creates one linked Actual and recalculates Now");
 
   await page.clock.setFixedTime(new Date("2026-09-16T15:30:00+09:00"));
   await page.clock.fastForward(30000);
@@ -81,11 +83,6 @@ try {
   await page.clock.setFixedTime(new Date("2026-09-16T16:42:00+09:00"));
   await page.clock.fastForward(30000);
 
-  await page.locator(".routine-chip").filter({ hasText: "ストレッチ" }).click();
-  await waitFor(async () => (await snapshot()).some(e => e.type === "routineOccurrence" && e.payload.routineId === "routine1" && e.payload.status === "done"));
-  assert.ok(await page.locator(".diary-hero.is-celebrating").count());
-  check("Routine completion stores its own occurrence and triggers a fairy reaction");
-
   await page.locator(".command-trigger").click();
   await page.locator("dialog[open]").waitFor();
   await screenshot("desktop-command");
@@ -97,7 +94,8 @@ try {
   await mainTab("タスク");
   await page.locator(".task-summary").filter({ hasText: "ブラウザ確認タスク" }).click();
   await page.getByLabel("名前", { exact: true }).fill("ブラウザ確認タスク・編集済み");
-  await page.getByLabel("方向", { exact: true }).selectOption("direction_career");
+  await page.getByText("詳細を設定", { exact: true }).click();
+  await page.getByLabel("タスクの方向", { exact: true }).selectOption("direction_career");
   await page.getByRole("button", { name: "保存する", exact: true }).click();
   await page.locator(".task-summary").filter({ hasText: "ブラウザ確認タスク・編集済み" }).waitFor();
   const edited = (await snapshot()).find(e => e.payload.title === "ブラウザ確認タスク・編集済み");
@@ -112,7 +110,20 @@ try {
   assert.equal(await page.locator(".day-containers").getByRole("button", { name: "秋学期", exact: true }).count(), 1);
   assert.equal(await page.locator(".day-sticker").filter({ hasText: "延期した予定" }).count(), 0);
   await screenshot("desktop-day");
-  check("Day renders separate Plan, Actual and Routine lanes, overlap and containers");
+  check("Day renders separate Plan and Actual lanes, overlap and containers");
+
+  await scrollCalendar(20);
+  assert.ok(await page.locator(".day-plan-lane .calendar-compact").count() >= 5);
+  assert.ok(await page.locator(".day-actual-lane .calendar-compact").count() >= 5);
+  const compactPlan = page.getByRole("button", { name: "予定 1分の予定 20:30から20:31", exact: true });
+  const compactActual = page.getByRole("button", { name: "実績 1分の実績 20:30から20:31", exact: true });
+  assert.ok((await compactPlan.boundingBox()).height >= 44);
+  assert.ok((await compactActual.boundingBox()).height >= 44);
+  assert.equal(await compactPlan.locator(".calendar-compact-anchor").count(), 0);
+  assert.equal(await compactPlan.locator("xpath=..").locator(".calendar-compact-anchor").count(), 1);
+  assert.ok((await page.getByRole("button", { name: "予定 60分の予定 19:00から20:00", exact: true }).locator("xpath=..").getAttribute("class")).includes("calendar-block"));
+  check("Day compact rows keep 1/2/5/10/30-minute items readable, tappable and anchored while 60 minutes stays proportional");
+  await scrollCalendar(14);
 
   const old = await get("review");
   await drag(page.getByRole("button", { name: "今日の復習を移動（上下キーで15分）", exact: true }), 64);
@@ -157,10 +168,17 @@ try {
   for (const [label, selector, file] of [["週", ".week-time-grid", "desktop-week"], ["月", ".month-grid", "desktop-month"]]) {
     await page.locator(".view-tabs").getByRole("button", { name: label, exact: true }).click();
     await page.locator(selector).waitFor();
+    if (label === "週") {
+      const weekCompact = page.getByRole("button", { name: "予定 1分の予定 20:30から20:31", exact: true });
+      assert.ok((await weekCompact.getAttribute("class")).includes("calendar-compact"));
+      assert.ok((await weekCompact.boundingBox()).height >= 44);
+      assert.ok((await page.getByRole("button", { name: "実績 1分の実績 20:30から20:31", exact: true }).getAttribute("class")).includes("calendar-compact"));
+      check("Week uses the same compact-row and exact-anchor presentation as Day");
+    }
     await screenshot(file);
     check(label + " calendar renders");
   }
-  for (const label of ["プロジェクト", "ルーティン", "お金", "設定"]) {
+  for (const label of ["ルーティン", "お金", "設定"]) {
     await menuTab(label);
     assert.ok(await page.locator(".diary-main .panel").count());
     assert.equal(await page.locator(".diary-main>header h1").innerText(), label);
@@ -229,13 +247,24 @@ try {
   await mainTab("カレンダー");
   await page.locator(".view-tabs").getByRole("button", { name: "日", exact: true }).click();
   await page.locator(".plan-content").filter({ hasText: futureBlock.payload.title }).first().click();
-  const futureStart = await page.getByLabel("開始", { exact: true }).inputValue();
-  const [futureHour, futureMinute] = futureStart.split(":").map(Number);
-  const shiftedMinutes = futureHour * 60 + futureMinute + 15;
-  await page.getByLabel("開始", { exact: true }).fill(`${String(Math.floor(shiftedMinutes / 60)).padStart(2, "0")}:${String(shiftedMinutes % 60).padStart(2, "0")}`);
+  await page.getByLabel("名前", { exact: true }).fill(futureBlock.payload.title + "・手動");
   await page.getByRole("button", { name: "保存する", exact: true }).click();
   await waitFor(async () => (await get(futureBlock.id)).payload.generationState === "overridden");
   check("Future Block is visible and a manual edit prevents automatic relocation");
+
+  const earlyPlan = await get("evening");
+  await page.clock.setFixedTime(new Date("2026-09-16T17:50:00+09:00"));
+  await page.clock.fastForward(30000);
+  await mainTab("今");
+  await page.getByRole("button", { name: /過去問を解くを今から始める/ }).click();
+  await waitFor(async () => (await snapshot()).some(item => item.type === "executionSession" && item.payload.status === "running" && item.payload.planId === "evening"));
+  assert.deepEqual(await get("evening"), earlyPlan);
+  await page.getByRole("button", { name: "いったん止める", exact: true }).click();
+  await waitFor(async () => (await snapshot()).some(item => item.type === "executionSession" && item.payload.planId === "evening" && item.payload.outcome === "paused"));
+  assert.ok((await snapshot()).some(item => item.type === "actual" && item.payload.planId === "evening"));
+  check("Early Start begins an Actual Session at the real time without moving Plan; Pause records progress without completing Activity");
+  await page.clock.setFixedTime(new Date("2026-09-16T16:42:00+09:00"));
+  await page.clock.fastForward(30000);
 
   await page.goto("http://127.0.0.1:4176/?notification=wake", { waitUntil: "networkidle" });
   await page.locator(".notification-entry").waitFor();

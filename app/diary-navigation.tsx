@@ -1,8 +1,8 @@
 "use client";
-import { Home, CalendarDays, ListTodo, Inbox, FolderTree, Repeat2, WalletCards, Settings, Ellipsis, LogOut, Gem, Check } from "lucide-react";
+import { Home, CalendarDays, ListTodo, Inbox, Repeat2, WalletCards, Settings, Ellipsis, LogOut, Gem, Check } from "lucide-react";
 import { diaryThemes, useDiaryTheme, type DiaryThemeId } from "./diary-theme";
 const primary = [["now", "今", Home], ["plan", "カレンダー", CalendarDays], ["tasks", "タスク", ListTodo], ["inbox", "未整理", Inbox]] as const;
-const secondary = [["today", "今日の予定", CalendarDays], ["projects", "プロジェクト", FolderTree], ["routines", "ルーティン", Repeat2], ["money", "お金", WalletCards], ["settings", "設定", Settings]] as const;
+const secondary = [["today", "今日の予定", CalendarDays], ["routines", "ルーティン", Repeat2], ["money", "お金", WalletCards], ["settings", "設定", Settings]] as const;
 export function DiaryNavigation({ tab, setTab, checks, userName, syncState, onSignOut }: {
   tab: string; setTab: (tab: string) => void; checks: number; userName: string; syncState: string; onSignOut: () => void;
 }) {

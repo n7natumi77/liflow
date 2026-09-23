@@ -63,7 +63,7 @@ const legacyDefaults: Record<EntityType, Record<string, unknown>> = {
     projectId: null,
     note: "",
   },
-  checkin: {},
+  checkin: {}, // Legacy/reserved: retained for old snapshots; no vNext creation flow.
   calendarCategory: { colorToken: "#b9aab6", icon: "", sortOrder: 0, archived: false },
   direction: {},
   project: {
@@ -131,9 +131,10 @@ const v4Defaults: Record<EntityType, Record<string, unknown>> = {
     suggestedMinutes: null,
     directionId: null,
     actualId: null,
+    outcome: null,
   },
   transaction: {},
-  checkin: {},
+  checkin: {}, // Legacy/reserved compatibility only.
   calendarCategory: {},
   direction: { description: "", icon: "", colorToken: "", active: true, sortOrder: 0 },
   project: {},
@@ -160,9 +161,10 @@ const v5Defaults: Record<EntityType, Record<string, unknown>> = {
     suggestedMinutes: null,
     directionId: null,
     actualId: null,
+    outcome: null,
   },
   transaction: {},
-  checkin: {},
+  checkin: {}, // Legacy/reserved compatibility only.
   calendarCategory: {},
   direction: {},
   project: {},
@@ -196,9 +198,9 @@ const v6Defaults: Record<EntityType, Record<string, unknown>> = {
   routineRun: {},
   sleepRecord: {},
   conditionRecord: {},
-  executionSession: {},
+  executionSession: { outcome: null },
   transaction: {},
-  checkin: {},
+  checkin: {}, // Legacy/reserved compatibility only.
   calendarCategory: {},
   direction: {},
   project: {},

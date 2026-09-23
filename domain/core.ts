@@ -217,8 +217,16 @@ export type ConditionRecordData = {
   note?: string;
   source: ObservationSource;
   confidence?: number | null;
+  /** A factual Now mismatch observation. It never changes Task urgency by itself. */
+  startAssist?: {
+    reason: "occupied" | "contextUnavailable" | "blocked" | "insufficientWindow";
+    targetId?: string | null;
+    targetKind?: "task" | "plan" | null;
+    usableMinutes?: number | null;
+  } | null;
 };
 
+export type ExecutionOutcome = "activityCompleted" | "paused";
 export type ExecutionSessionData = {
   targetKind: "task" | "plan";
   taskId?: string | null;
@@ -230,6 +238,8 @@ export type ExecutionSessionData = {
   suggestedMinutes?: number | null;
   directionId?: string | null;
   actualId?: string | null;
+  /** Explicit Activity lifecycle result. An Actual alone never implies completion. */
+  outcome?: ExecutionOutcome | null;
 };
 
 export type TransactionData = {
@@ -301,12 +311,20 @@ export const validTimeRange = (startAt: string, endAt: string) => {
   return Number.isFinite(start) && Number.isFinite(end) && start < end;
 };
 
+/** Canonical vNext category path: explicit -> linked Plan -> linked Task. */
 export const inheritedCategory = (
   explicit?: string | null,
   plan?: string | null,
   task?: string | null,
+) => explicit || plan || task || null;
+
+/** Compatibility-only fallback for legacy viewers. New inputs must not use it. */
+export const legacyInheritedCategory = (
+  explicit?: string | null,
+  plan?: string | null,
+  task?: string | null,
   project?: string | null,
-) => explicit || plan || task || project || null;
+) => inheritedCategory(explicit, plan, task) || project || null;
 
 /** Direction inheritance intentionally has no Project fallback. */
 export const inheritedDirection = (

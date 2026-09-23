@@ -46,6 +46,7 @@ export function createExecutionSessionPayload(
     suggestedMinutes,
     directionId: inheritedDirection(plan?.payload.directionId, targetTask?.payload.directionId),
     actualId: null,
+    outcome: null,
   };
 }
 
@@ -62,7 +63,7 @@ export function completionPayloads(
     title: session.payload.title,
     taskId: session.payload.taskId || null,
     planId: session.payload.planId || null,
-    projectId: task?.payload.projectId || null,
+    projectId: null,
     calendarCategoryId: task?.payload.calendarCategoryId || null,
     directionId: inheritedDirection(session.payload.directionId, task?.payload.directionId),
     startAt: session.payload.startedAt,

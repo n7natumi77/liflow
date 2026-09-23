@@ -3,14 +3,16 @@ import assert from "node:assert/strict";
 import {
   getCurrentFixedPlan,
   getDepartureAnchor,
+  getEarlyStartCandidate,
   getNextAnchor,
   getTaskRemainingEstimate,
   getUsableWindow,
   reserveDeadlines,
+  isPlanActivityCompleted,
 } from "./scheduling.ts";
 import { getDirectionActualSummary, getDirectionNeeds, resolveActualDirection } from "./directions.ts";
 import { getNowDecision } from "./now-engine.ts";
-import type { ActualData, CoreEntity, EntityType, PlanData, SettingsData, TaskData } from "./core.ts";
+import type { ActualData, CoreEntity, EntityType, ExecutionSessionData, PlanData, SettingsData, TaskData } from "./core.ts";
 
 const at = (date: string, time: string) => new Date(`${date}T${time}:00`).toISOString();
 const make = <T>(id: string, type: EntityType, payload: T): CoreEntity<T> => ({
@@ -183,4 +185,48 @@ test("Morning Flow reports urgency against Travel departure and returns to Task 
 test("Project is never required by Now Engine", () => {
   const noProject = task("standalone", { deadline: at("2026-01-01", "10:00"), estimatedRemainingMinutes: 20 });
   assert.equal(getNowDecision([settings, awake, noProject], now).primaryAction?.kind, "task");
+});
+
+test("a startable Plan can begin early without moving the Plan", () => {
+  const linkedTask = task("early-task", { nextAction: { title: "下書きを開く", minimumUsefulMinutes: 15 } });
+  const early = plan("early-plan", "09:30", "10:30", { type: "task", taskId: linkedTask.id });
+  const candidate = getEarlyStartCandidate([settings, awake, linkedTask, early], now, settings.payload);
+  assert.equal(candidate?.plan.id, early.id);
+  assert.equal(candidate?.usableMinutes, 90);
+  assert.equal(early.payload.startAt, at("2026-01-01", "09:30"));
+  assert.equal(getNowDecision([settings, awake, linkedTask, early], now).earlyStartCandidate?.planId, early.id);
+});
+
+test("Early Start never overrides a current appointment or running Session", () => {
+  const current = plan("appointment", "08:50", "09:20", { type: "appointment" });
+  const early = plan("early", "09:30", "10:30", { type: "task" });
+  assert.equal(getEarlyStartCandidate([current, early], now), null);
+  const session = make<ExecutionSessionData>("running", "executionSession", { targetKind: "task", title: "別の作業", startedAt: at("2026-01-01", "08:55"), status: "running" });
+  assert.equal(getEarlyStartCandidate([early, session], now), null);
+  assert.equal(getNowDecision([settings, awake, task("urgent", { deadline: at("2026-01-01", "09:10"), estimatedRemainingMinutes: 60 }), session], now).reason, "running_session");
+  const intervening = plan("intervening", "09:15", "09:25", { type: "appointment" });
+  assert.equal(getEarlyStartCandidate([early, intervening], now), null);
+  const linkedAppointment = plan("linked-appointment", "09:30", "10:30", { type: "appointment", taskId: "early-task" });
+  assert.equal(getEarlyStartCandidate([linkedAppointment], now), null);
+});
+
+test("explicit Activity completion frees the remaining Plan window while Pause does not", () => {
+  const activePlan = plan("active-plan", "08:30", "10:00", { type: "task" });
+  const completed = make<ExecutionSessionData>("completed-session", "executionSession", { targetKind: "plan", planId: activePlan.id, title: activePlan.payload.title, startedAt: at("2026-01-01", "08:30"), endedAt: at("2026-01-01", "08:50"), status: "completed", outcome: "activityCompleted" });
+  const paused = make<ExecutionSessionData>("paused-session", "executionSession", { targetKind: "plan", planId: activePlan.id, title: activePlan.payload.title, startedAt: at("2026-01-01", "08:30"), endedAt: at("2026-01-01", "08:50"), status: "completed", outcome: "paused" });
+  assert.equal(isPlanActivityCompleted([activePlan, completed], activePlan.id), true);
+  assert.equal(getCurrentFixedPlan([activePlan, completed], now), null);
+  assert.equal(getNowDecision([settings, awake, activePlan, completed], now).reason, "free");
+  assert.equal(isPlanActivityCompleted([activePlan, paused], activePlan.id), false);
+  assert.equal(getCurrentFixedPlan([activePlan, paused], now)?.id, activePlan.id);
+});
+
+test("an Actual alone never completes Activity and unavailable reasons do not erase urgency", () => {
+  const activePlan = plan("actual-plan", "08:30", "10:00", { type: "task" });
+  const partial = make<ActualData>("partial", "actual", { title: "途中", planId: activePlan.id, startAt: at("2026-01-01", "08:30"), endAt: at("2026-01-01", "08:45"), type: "task" });
+  assert.equal(getCurrentFixedPlan([activePlan, partial], now)?.id, activePlan.id);
+  const urgent = task("unavailable", { deadline: at("2026-01-01", "09:20"), estimatedRemainingMinutes: 60 });
+  assert.equal(reserveDeadlines([settings, urgent], now, settings.payload)[0].pressure, "critical");
+  assert.notEqual(getNowDecision([settings, awake, urgent], now, { unavailableTaskIds: [urgent.id], assistReason: "contextUnavailable" }).primaryAction?.kind, "task");
+  assert.equal(getNowDecision([settings, awake, urgent], now).primaryAction?.kind, "task");
 });

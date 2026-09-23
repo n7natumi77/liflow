@@ -46,16 +46,16 @@ export async function phase3MobileChecks({ page, check }) {
 }
 
 export async function phase3EmptyChecks({ page, check }) {
-  await page.evaluate(() => window.__liflowFixture.emptyTypes(["task", "inbox", "plan", "actual", "project", "routine", "routineOccurrence", "transaction"]));
+  await page.evaluate(() => window.__liflowFixture.emptyTypes(["task", "inbox", "plan", "actual", "transaction", "recurringActivityRule", "routineFlow", "routineRun"]));
   for (const id of ["tasks", "inbox"]) {
     await page.locator(`.diary-tabs>[data-tab="${id}"]`).click();
     await page.locator(".notebook-empty").first().waitFor();
   }
-  for (const id of ["projects", "routines", "money"]) {
+  for (const id of ["routines", "money"]) {
     const menu = page.locator(".diary-menu");
     if (!await menu.getAttribute("open")) await menu.locator("summary").click();
     await menu.locator(`[data-tab="${id}"]`).click();
     await page.locator(".notebook-empty").first().waitFor();
   }
-  check("Task, Inbox, Project, Routine and Money empty states render after data removal");
+  check("Task, Inbox, Routine Flow and Money empty states render while legacy data stays untouched");
 }

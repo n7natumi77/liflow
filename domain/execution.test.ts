@@ -10,6 +10,7 @@ test("Task and Plan starts create persistent running Session payloads with inher
   const task = make<TaskData>("task", "task", { title: "レポート", status: "open", directionId: "career" });
   const taskSession = createExecutionSessionPayload(task, started, 25);
   assert.equal(taskSession.status, "running");
+  assert.equal(taskSession.outcome, null);
   assert.equal(taskSession.taskId, "task");
   assert.equal(taskSession.directionId, "career");
   const plan = make<PlanData>("plan", "plan", { title: "予定", taskId: "task", directionId: "plan-direction", startAt: started.toISOString(), endAt: new Date(+started + 3600000).toISOString(), type: "task", flexibility: "fixed", allDay: false });
@@ -25,12 +26,24 @@ test("Session completion creates linked Actual, decrements only existing remaini
   const result = completionPayloads(session, new Date("2026-01-01T10:30:00.000Z"), task);
   assert.equal(result.actual.taskId, "task");
   assert.equal(result.actual.planId, null);
+  assert.equal(result.actual.projectId, null);
   assert.equal(result.nextTask?.estimatedRemainingMinutes, 60);
   assert.equal(result.nextTask?.status, "open");
   assert.equal(executionActualId(session.id), executionActualId(session.id));
   const unknown = make<TaskData>("unknown", "task", { title: "不明", status: "open", estimatedRemainingMinutes: null });
   const unknownSession = make<ExecutionSessionData>("unknown-session", "executionSession", createExecutionSessionPayload(unknown, started, 5));
   assert.equal(completionPayloads(unknownSession, new Date("2026-01-01T10:05:00.000Z"), unknown).nextTask?.estimatedRemainingMinutes, null);
+});
+
+test("Pause and resume use separate Sessions so one Plan can retain multiple Actuals", () => {
+  const linked = make<PlanData>("plan", "plan", { title: "分割作業", startAt: started.toISOString(), endAt: new Date(+started + 3600000).toISOString(), type: "task", flexibility: "fixed", allDay: false });
+  const first = make<ExecutionSessionData>("session-a", "executionSession", createExecutionSessionPayload(linked, started, null));
+  const secondStart = new Date("2026-01-01T10:30:00.000Z");
+  const second = make<ExecutionSessionData>("session-b", "executionSession", createExecutionSessionPayload(linked, secondStart, null));
+  assert.notEqual(executionActualId(first.id), executionActualId(second.id));
+  assert.equal(completionPayloads(first, new Date("2026-01-01T10:10:00.000Z")).actual.planId, linked.id);
+  assert.equal(completionPayloads(second, new Date("2026-01-01T10:45:00.000Z")).actual.planId, linked.id);
+  assert.equal(linked.payload.startAt, started.toISOString());
 });
 
 test("Routine Flow starts in order, supports skip/check completion, finishes, and resumes from stored Run", () => {

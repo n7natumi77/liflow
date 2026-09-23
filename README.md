@@ -10,6 +10,8 @@ Liflowを自分のPCで起動してテストできる配布版です。ChatGPT W
 
 Phase 2ではPWA、通知境界、繰り返し予定、Future Block、Direction実績表示を追加しました。起床確認は固定の午前判定ではなく、当日の`plannedWakeAt`、Sleep Plan、設定した通常の起床候補の順で決まります。繰り返し予定は未来45日だけを安定IDで生成し、手動編集した予定をRuleで上書きしません。Future Blockは専門・進路の不足とOpen Taskが揃い、criticalな締切がない安全な空き時間にだけ1日最大1件作ります。
 
+Phase 2.4ではProjectと旧Routineを通常UIから退役させ、既存データだけを互換保持します。生活の繰り返しはRecurring Activity RuleとRoutine Flowで扱い、実行はSessionからActualを記録します。「この作業は終わった」「Taskも完了」「いったん止める」を区別し、Pause後の再開では同じPlanへ複数のActualを残せます。Early Startは安全な未来Planだけを実時刻から開始し、元のPlan時刻を変更しません。短時間のPlan/ActualはDay・Weekで時間位置を保ったコンパクト行として表示します。
+
 ## 必要なもの
 
 - Node.js 22以上（LTS版推奨）
@@ -44,7 +46,7 @@ Firebase ConsoleではAuthenticationの「メール/パスワード」を有効�
 
 永続Entityは共通registryで管理され、すべて`schemaVersion`を持ちます。旧データは`v1 → v2 → v3 → v4 → v5 → v6`の順で段階的に移行します。移行前には`users/{uid}/backups/{backupId}`へ件数・時刻・schemaVersionを記録し、その下へEntity単位のsnapshotを保存します。snapshotの保存完了後にだけmigrationを開始します。設定画面から過去のsnapshotを選んで復元でき、復元直前の状態も自動で別snapshotへ保存します。
 
-schema v4ではTask / Plan / Actualへ任意の`directionId`を追加し、固定IDの初期Direction（学業・専門・進路・生活・世界）を重複なく初期化します。Taskは`nextAction`と`estimatedRemainingMinutes`を保持できます。schema v5では永続化される`executionSession`、時間安全設定、編集可能な初期Morning Flowを追加しました。schema v6ではPlanへRecurring / Future Blockの生成元と編集保護状態、SettingsへWake・通知・Direction Policyを追加しました。Session終了は決定的なActual IDを用いるFirestore transactionでActual作成と残時間更新をまとめ、二重終了によるActual重複を防ぎます。既存ProjectとRoutineは推測変換せず、そのまま保持します。
+schema v4ではTask / Plan / Actualへ任意の`directionId`を追加し、固定IDの初期Direction（学業・専門・進路・生活・世界）を重複なく初期化します。Taskは`nextAction`と`estimatedRemainingMinutes`を保持できます。schema v5では永続化される`executionSession`、時間安全設定、編集可能な初期Morning Flowを追加しました。schema v6ではPlanへRecurring / Future Blockの生成元と編集保護状態、SettingsへWake・通知・Direction Policyを追加しました。Phase 2.4もschema v6のままで、Session終了時の`activityCompleted` / `paused`を互換的な任意フィールドとして保存します。終了処理は決定的なActual IDを用いるFirestore transactionでActual作成と残時間更新をまとめ、二重終了によるActual重複を防ぎます。既存Project・旧Routine・RoutineOccurrence・Parent Task関連は推測変換せず、そのまま保持します。
 
 Now Engineは`domain/now-engine.ts`、時間・締切予約は`domain/scheduling.ts`、Direction集計は`domain/directions.ts`、実行・Routine Run遷移は`domain/execution.ts`に分離されています。Phase 2のWake Window、通知、繰り返し生成、Future Blockもそれぞれ`domain/wake.ts`、`domain/notifications.ts`、`domain/recurrence.ts`、`domain/future-blocks.ts`へ分離しました。NowDecision自体は保存せず、Entity集合・現在時刻・設定値から決定論的に再計算します。
 
@@ -77,16 +79,16 @@ npx wrangler deploy --config wrangler.notifications.jsonc
 
 通知Jobは`notificationJobs/{dedupeId}`へCore Entityとは分離して保存します。SchedulerはFirestore document versionを条件にJobをclaimし、重複cronの二重送信を抑止します。Push失敗時はJobを再試行可能に戻し、Task / Plan / Actualを変更しません。
 
-## 今回の不具合修正
+## 主な実装内容
 
-- Routine保存時にFirestoreで拒否される`undefined`を送信しない
-- Transactionを一覧から編集・tombstone削除できる
-- Inbox Itemを編集・整理・削除できる
-- Routine Occurrenceを「記録を戻す」で削除でき、Routine本体も削除できる
-- Week ViewではPlanとActualを左右に分離し、時間が重なる同種の項目も横方向へ分割する
-- Day Viewの同時間帯項目も横方向へ分割する
-- 時刻を指定したRoutineを「今」「今日」と日・週カレンダーへ表示する
-- Plan / Routine / Actualを日表示で別レーンにし、週表示ではPlanとActualを左右に分ける
+- Projectのナビ・一覧・新規作成・各入力欄・フィルターを通常UIから削除し、旧関連IDは編集時も保持する
+- 旧RoutineとRoutineOccurrenceの新規生成を停止し、Routine画面をRecurring Activity RuleとRoutine Flowへ整理する
+- Task入力は名前と締切を中心にし、Next Action・残り見積・カレンダー・Directionを詳細欄へまとめる
+- Nowの案内強度をstrong / balanced / lightで分け、Free Modeを維持する
+- Activity終了結果、Early Start、Pause/Resume、Task完了の原子的更新を実装する
+- Start Assistで心理的な取りかかりにくさと、場所・待ち・時間不足などの一時的な実行不可を分ける
+- Day / Weekの短時間Plan・Actualを、正確な時間位置と44px操作領域を両立するコンパクト表示にする
+- Transactionを一覧から編集・tombstone削除でき、旧Project関連は編集しても保持する
 - 競合したローカル版とクラウド版を両方保存し、設定画面で選択して解決する
 - バックアップ一覧と、確認付きの安全な復元を設定画面へ追加する
 
@@ -159,5 +161,6 @@ Botは許可済みDiscord User IDだけを受け付けます。Firestoreへは`r
 - `npm run test`
 - `npm run lint`
 - `npm run build`
+- `npm run test:ui`
 
 Task、Plan、Actualは別々のエンティティとして保存されます。PlanなしActualとTaskなしPlanも保存でき、Planに紐づくActualは`Actual.planId`で複数取得します。削除はデータを即時消去せず、tombstoneとして記録します。

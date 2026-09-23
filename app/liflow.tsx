@@ -10,7 +10,6 @@ import {
   X,
   ArrowRight,
   Trash2,
-  FolderTree,
   Repeat2,
   WalletCards,
   Settings,
@@ -18,10 +17,8 @@ import {
 } from "lucide-react";
 import {
   active,
-  inheritedCategory,
   unresolved,
   validTimeRange,
-  wouldCreateCycle,
   type ActualData,
   type ConflictData,
   type CoreEntity,
@@ -29,10 +26,10 @@ import {
   type PlanData,
   type InboxData,
   type CalendarCategoryData,
-  type ProjectData,
   type SettingsData,
   type DirectionData,
   type ExecutionSessionData,
+  type ExecutionOutcome,
   type RoutineFlowData,
   type RoutineRunData,
   type SleepRecordData,
@@ -47,7 +44,7 @@ import { DiaryNavigation } from "./diary-navigation";
 import { DiaryDialog } from "./diary-dialog";
 import { dayRange, scheduledPlans } from "./diary-time";
 import type { Capture, CaptureState as Modal } from "./diary-types";
-import { MoneyView, ProjectsView, RoutinesView } from "./life-sections";
+import { MoneyView, RoutinesView } from "./life-sections";
 import {
   createEntity,
   createEntities,
@@ -82,7 +79,6 @@ const nav = [
   ["today", "今日", CalendarDays],
   ["plan", "カレンダー", CalendarRange],
   ["tasks", "タスク", ListTodo],
-  ["projects", "プロジェクト", FolderTree],
   ["routines", "ルーティン", Repeat2],
   ["money", "お金", WalletCards],
   ["inbox", "未整理", Inbox],
@@ -366,10 +362,10 @@ function LiflowApp({
     const saved = await startExecutionSession(userId, createExecutionSessionPayload(target as CoreEntity<TaskData> | CoreEntity<PlanData>, new Date(), suggestedMinutes, linkedTask));
     setEntities(value => [...value.filter(item => item.id !== saved.id), saved]);
   };
-  const endExecution = async (sessionId: string, completeTask = false) => {
+  const endExecution = async (sessionId: string, outcome: ExecutionOutcome, completeTask = false) => {
     const session = entities.find(item => item.id === sessionId && item.type === "executionSession") as CoreEntity<ExecutionSessionData> | undefined;
     if (!session) return;
-    const result = await completeExecutionSession(userId, session, new Date().toISOString(), completeTask);
+    const result = await completeExecutionSession(userId, session, new Date().toISOString(), outcome, completeTask);
     setEntities(value => [
       ...value.filter(item => ![result.session.id, result.actual.id, result.task?.id].filter(Boolean).includes(item.id)),
       result.session,
@@ -402,7 +398,6 @@ function LiflowApp({
   const inbox = active<InboxData>(entities, "inbox");
   const categories = active<CalendarCategoryData>(entities, "calendarCategory");
   const directions = active<DirectionData>(entities, "direction");
-  const projects = active<ProjectData>(entities, "project");
   const settings = active<SettingsData>(entities, "settings")[0];
   const conflicts = active<ConflictData>(entities, "conflict").filter(
     (item) => item.payload.status === "open",
@@ -518,16 +513,8 @@ function LiflowApp({
               <TasksView
                 tasks={tasks}
                 plans={plans}
-                projects={projects}
                 categories={categories}
                 setModal={setModal}
-                update={update}
-              />
-            )}
-            {tab === "projects" && (
-              <ProjectsView
-                entities={entities}
-                create={create}
                 update={update}
               />
             )}
@@ -603,7 +590,6 @@ function LiflowApp({
           tasks={tasks}
           plans={plans}
           categories={categories}
-          projects={projects}
           directions={directions}
           close={() => setModal(null)}
           create={create}
@@ -930,6 +916,12 @@ export function SettingsView({
       setBusy(false);
     }
   };
+  const legacyCounts = {
+    project: active(entities, "project").length,
+    routine: active(entities, "routine").length,
+    occurrence: active(entities, "routineOccurrence").length,
+    checkin: active(entities, "checkin").length,
+  };
   return (
     <div className="settings-stack">
       <section className="panel settings-panel">
@@ -1055,6 +1047,12 @@ export function SettingsView({
         </div>
       </section>
       <section className="panel settings-panel">
+        <p className="kicker">旧データ</p>
+        <h2>互換データを確認</h2>
+        <p>以前のProject・旧Routineは削除せず保持しています。通常の新規入力では使用しません。</p>
+        <details className="legacy-data-viewer"><summary>件数を見る</summary><dl><div><dt>旧Project</dt><dd>{legacyCounts.project}件</dd></div><div><dt>旧Routine</dt><dd>{legacyCounts.routine}件</dd></div><div><dt>旧Routine記録</dt><dd>{legacyCounts.occurrence}件</dd></div><div><dt>旧Check-in</dt><dd>{legacyCounts.checkin}件</dd></div></dl></details>
+      </section>
+      <section className="panel settings-panel">
         <p className="kicker">Discord</p>
         <h2>Discordへ送る</h2>
         <p>
@@ -1099,7 +1097,6 @@ export function CaptureModal({
   tasks,
   plans,
   categories,
-  projects,
   directions,
   close,
   create,
@@ -1112,7 +1109,6 @@ export function CaptureModal({
   tasks: CoreEntity<TaskData>[];
   plans: CoreEntity<PlanData>[];
   categories: CoreEntity<CalendarCategoryData>[];
-  projects: CoreEntity<ProjectData>[];
   directions: CoreEntity<DirectionData>[];
   close: () => void;
   create: (t: EntityType, p: Record<string, unknown>) => Promise<void>;
@@ -1170,17 +1166,6 @@ export function CaptureModal({
     [due, setDue] = useState(
       task?.payload.deadline ? localDate(new Date(task.payload.deadline)) : "",
     ),
-    [projectId, setProjectId] = useState(
-      String(
-        editingPayload.projectId ||
-          plan?.payload.projectId ||
-          task?.payload.projectId ||
-          "",
-      ),
-    ),
-    [parentTaskId, setParentTaskId] = useState(
-      task?.payload.parentTaskId || "",
-    ),
     [categoryId, setCategoryId] = useState(
       String(
         editingPayload.calendarCategoryId ||
@@ -1206,19 +1191,7 @@ export function CaptureModal({
     ),
     [busy, setBusy] = useState(false),
     [formError, setFormError] = useState("");
-  const project = projects.find((p) => p.id === projectId);
-  const effectiveCategory = inheritedCategory(
-    categoryId,
-    plan?.payload.calendarCategoryId,
-    task?.payload.calendarCategoryId,
-    project?.payload.calendarCategoryId,
-  );
-  const changeProject = (id: string) => {
-    setProjectId(id);
-    const p = projects.find((x) => x.id === id);
-    if (!categoryId && p?.payload.calendarCategoryId)
-      setCategoryId(p.payload.calendarCategoryId);
-  };
+  const effectiveCategory = categoryId || plan?.payload.calendarCategoryId || task?.payload.calendarCategoryId || null;
   const save = async () => {
     if (!title.trim() || busy) return;
     setFormError("");
@@ -1233,13 +1206,6 @@ export function CaptureModal({
       setFormError("終了日時は開始日時より後にしてください。");
       return;
     }
-    if (kind === "task" && task && parentTaskId) {
-      const parents = new Map(tasks.map((t) => [t.id, t.payload.parentTaskId]));
-      if (wouldCreateCycle(task.id, parentTaskId, parents)) {
-        setFormError("この親タスクを選ぶと循環するため保存できません。");
-        return;
-      }
-    }
     setBusy(true);
     try {
       let payload: Record<string, unknown> = {};
@@ -1253,8 +1219,8 @@ export function CaptureModal({
           estimatedRemainingMinutes: remainingEstimate ? Number(remainingEstimate) : null,
           nextAction: nextActionTitle.trim() ? { ...(task?.payload.nextAction || {}), title: nextActionTitle.trim(), generatedBy: "manual" } : null,
           directionId: directionId || null,
-          projectId: projectId || null,
-          parentTaskId: parentTaskId || null,
+          projectId: task?.payload.projectId || null,
+          parentTaskId: task?.payload.parentTaskId || null,
           calendarCategoryId: effectiveCategory,
           status: task?.payload.status || "open",
           completedAt: task?.payload.completedAt || null,
@@ -1264,7 +1230,7 @@ export function CaptureModal({
           ...plan?.payload,
           title: title.trim(),
           taskId: modal.taskId || plan?.payload.taskId || null,
-          projectId: projectId || null,
+          projectId: plan?.payload.projectId || null,
           calendarCategoryId: effectiveCategory,
           directionId: directionId || null,
           startAt: allDay ? originalAllDay && startValue && date === localDate(new Date(startValue)) ? startValue : toIso(date, "00:00") : preserveTime(date, start, startValue),
@@ -1282,7 +1248,7 @@ export function CaptureModal({
           title: title.trim(),
           taskId: String(editingPayload.taskId || task?.id || "") || null,
           planId: String(editingPayload.planId || modal.planId || "") || null,
-          projectId: projectId || null,
+          projectId: typeof editingPayload.projectId === "string" ? editingPayload.projectId : null,
           calendarCategoryId: effectiveCategory,
           directionId: directionId || null,
           startAt: preserveTime(date, start, startValue),
@@ -1337,22 +1303,7 @@ export function CaptureModal({
             }
           />
         </label>
-        {kind !== "inbox" && (
-          <div className="form-pair">
-            <label>
-              プロジェクト
-              <select aria-label="プロジェクト"
-                value={projectId}
-                onChange={(e) => changeProject(e.target.value)}
-              >
-                <option value="">なし</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.payload.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+        {kind !== "inbox" && kind !== "task" && (
             <label>
               カレンダー
               <select aria-label="カレンダー"
@@ -1367,9 +1318,8 @@ export function CaptureModal({
                 ))}
               </select>
             </label>
-          </div>
         )}
-        {kind !== "inbox" && (
+        {kind !== "inbox" && kind !== "task" && (
           <label>
             方向
             <select aria-label="方向" value={directionId} onChange={(event) => setDirectionId(event.target.value)}>
@@ -1378,27 +1328,13 @@ export function CaptureModal({
                 <option key={item.id} value={item.id}>{item.payload.name}</option>
               ))}
             </select>
-            {!directionId && task?.payload.directionId && kind !== "task" && (
+            {!directionId && task?.payload.directionId && (
               <small className="field-hint">{directions.find(item => item.id === task.payload.directionId)?.payload.name || "Taskの方向"}（Taskから継承）</small>
             )}
           </label>
         )}
         {kind === "task" && (
           <>
-            <label>
-              親タスク（任意）
-              <select aria-label="親タスク（任意）"
-                value={parentTaskId}
-                onChange={(e) => setParentTaskId(e.target.value)}
-              >
-                <option value="">なし</option>
-                {tasks.map((t) => (
-                  <option value={t.id} key={t.id}>
-                    {t.payload.title}
-                  </option>
-                ))}
-              </select>
-            </label>
             <label>
               締切（任意）
               <input
@@ -1407,10 +1343,14 @@ export function CaptureModal({
                 onChange={(e) => setDue(e.target.value)}
               />
             </label>
-            <div className="form-pair">
-              <label>残り見積（分・任意）<input type="number" min="0" step="1" inputMode="numeric" value={remainingEstimate} onChange={event => setRemainingEstimate(event.target.value)} /></label>
+            <details className="task-details"><summary>詳細を設定</summary>
               <label>次の一手（任意）<input value={nextActionTitle} onChange={event => setNextActionTitle(event.target.value)} placeholder="まず何をする？" /></label>
-            </div>
+              <div className="form-pair">
+                <label>残り見積（分・任意）<input type="number" min="0" step="1" inputMode="numeric" value={remainingEstimate} onChange={event => setRemainingEstimate(event.target.value)} /></label>
+                <label>カレンダー<select aria-label="タスクのカレンダー" value={categoryId} onChange={event => setCategoryId(event.target.value)}><option value="">なし</option>{categories.map(category => <option key={category.id} value={category.id}>{category.payload.name}</option>)}</select></label>
+              </div>
+              <label>方向<select aria-label="タスクの方向" value={directionId} onChange={event => setDirectionId(event.target.value)}><option value="">未指定</option>{directions.filter(item => item.payload.active || item.id === directionId).sort((a, b) => a.payload.sortOrder - b.payload.sortOrder).map(item => <option key={item.id} value={item.id}>{item.payload.name}</option>)}</select></label>
+            </details>
           </>
         )}
         {kind === "plan" && (

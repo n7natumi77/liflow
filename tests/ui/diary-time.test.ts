@@ -4,6 +4,7 @@ import { dayRange, freeRanges, isoAtMinute, movedRange } from "../../app/diary-t
 import type { CoreEntity, PlanData } from "../../domain/core.ts";
 import type { TaskData } from "../../domain/core.ts";
 import { monthEntries, weekDates } from "../../app/calendar-overview.ts";
+import { calendarItemPresentation, placeCalendarItems, MIN_HIT_TARGET_PX } from "../../app/calendar-presentation.ts";
 const date = new Date(2026, 8, 16);
 const plan = (start: number, end: number, extra: Partial<PlanData> = {}) => ({ payload: { startAt: isoAtMinute(date, start), endAt: isoAtMinute(date, end), ...extra } }) as CoreEntity<PlanData>;
 test("day clips overnight ranges without losing the next-day segment", () => {
@@ -50,4 +51,28 @@ test("month combines deadlines with plans before calculating overflow", () => {
   assert.equal(items.length, 4);
   assert.deepEqual(items.slice(0, 3).map(entry => entry.kind), ["deadline", "deadline", "deadline"]);
   assert.equal(items.length - items.slice(0, 3).length, 1);
+});
+
+test("short Calendar items switch from proportional blocks to accessible compact rows", () => {
+  const pixelsPerMinute = 64 / 60;
+  assert.equal(calendarItemPresentation(60, pixelsPerMinute).compact, false);
+  assert.equal(calendarItemPresentation(30, pixelsPerMinute).compact, true);
+  for (const duration of [10, 5, 2, 1]) {
+    const presentation = calendarItemPresentation(duration, pixelsPerMinute);
+    assert.equal(presentation.compact, true);
+    assert.ok(presentation.hitHeight >= MIN_HIT_TARGET_PX);
+    assert.equal(presentation.renderedHeight, duration * pixelsPerMinute);
+  }
+});
+
+test("adjacent compact items retain exact anchors while readable rows stack", () => {
+  const placed = placeCalendarItems([
+    { id: "a", item: "a", startMinute: 600, endMinute: 602, column: 0, columns: 1 },
+    { id: "b", item: "b", startMinute: 603, endMinute: 605, column: 0, columns: 1 },
+    { id: "c", item: "c", startMinute: 605, endMinute: 606, column: 0, columns: 1 },
+  ], 64 / 60);
+  assert.deepEqual(placed.map(item => item.anchorTop), [640, 643.2, 645.3333333333334]);
+  assert.ok(placed[1].displayTop >= placed[0].displayTop + MIN_HIT_TARGET_PX);
+  assert.ok(placed[2].displayTop >= placed[1].displayTop + MIN_HIT_TARGET_PX);
+  assert.ok(placed[1].anchorOffset < 0);
 });

@@ -14,6 +14,7 @@ import { getWakeWindow } from "./wake.ts";
 import {
   getCurrentFixedPlan,
   getDepartureAnchor,
+  getEarlyStartCandidate,
   getTaskRemainingEstimate,
   getUsableWindow,
   reserveDeadlines,
@@ -21,9 +22,9 @@ import {
 } from "./scheduling.ts";
 
 export type NowMode = "morning" | "fixed" | "focus" | "recovery" | "windDown" | "free";
-export type StartAssistReason = "unknown" | "heavy" | "tired" | "boring";
+export type StartAssistReason = "unknown" | "heavy" | "tired" | "boring" | "occupied" | "contextUnavailable" | "blocked" | "insufficientWindow";
 export type NowPrimaryAction =
-  | { kind: "session"; sessionId: string; title: string; startedAt: string; suggestedMinutes: number | null }
+  | { kind: "session"; sessionId: string; taskId: string | null; planId: string | null; title: string; startedAt: string; suggestedMinutes: number | null }
   | { kind: "wake"; title: string }
   | { kind: "plan"; planId: string; title: string }
   | { kind: "task"; taskId: string; sourcePlanId?: string | null; title: string; suggestedMinutes: number }
@@ -50,11 +51,15 @@ export type NowDecision = {
   usableMinutes: number | null;
   departureAt: string | null;
   reason: NowReason;
+  earlyStartCandidate: { planId: string; title: string; startAt: string; usableMinutes: number } | null;
   reasonDetails?: Record<string, unknown>;
 };
 
 export type NowEngineOptions = {
   assistReason?: StartAssistReason | null;
+  skippedTaskIds?: string[];
+  unavailableTaskIds?: string[];
+  /** Backward-compatible option used by earlier callers. */
   excludedTaskIds?: string[];
 };
 
@@ -176,11 +181,13 @@ export function getNowDecision(
     : 0;
   const window = getUsableWindow(entities, now, settings, remainingRoutineMinutes);
   const departure = getDepartureAnchor(entities, now, settings.departureSafetyBufferMinutes);
+  const earlyStart = getEarlyStartCandidate(entities, now, settings);
   const base = {
     nextAnchorAt: window.nextAnchor?.payload.startAt || null,
     usableUntil: window.usableUntil,
     usableMinutes: window.usableMinutes,
     departureAt: departure?.recommendedDepartureAt || null,
+    earlyStartCandidate: earlyStart ? { planId: earlyStart.plan.id, title: earlyStart.plan.payload.title, startAt: earlyStart.plan.payload.startAt, usableMinutes: earlyStart.usableMinutes } : null,
   };
   const session = runningSession(entities);
   if (session) {
@@ -190,6 +197,8 @@ export function getNowDecision(
       primaryAction: {
         kind: "session",
         sessionId: session.id,
+        taskId: session.payload.taskId || null,
+        planId: session.payload.planId || null,
         title: session.payload.title,
         startedAt: session.payload.startedAt,
         suggestedMinutes: session.payload.suggestedMinutes || null,
@@ -238,7 +247,7 @@ export function getNowDecision(
     };
   }
 
-  const excluded = new Set(options.excludedTaskIds || []);
+  const excluded = new Set([...(options.excludedTaskIds || []), ...(options.skippedTaskIds || []), ...(options.unavailableTaskIds || [])]);
   const tasks = active<TaskData>(entities, "task").filter(
     (task) => task.payload.status === "open" && !excluded.has(task.id),
   );

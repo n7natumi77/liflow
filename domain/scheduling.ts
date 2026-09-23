@@ -2,6 +2,7 @@ import {
   active,
   validTimeRange,
   type CoreEntity,
+  type ExecutionSessionData,
   type PlanData,
   type SettingsData,
   type TaskData,
@@ -29,10 +30,53 @@ const usablePlan = (plan: CoreEntity<PlanData>) =>
   plan.payload.type !== "container" &&
   validTimeRange(plan.payload.startAt, plan.payload.endAt);
 
+/** Activity completion is explicit Session state; linked Actuals may also be pauses. */
+export const isPlanActivityCompleted = (entities: CoreEntity[], planId: string) =>
+  active<ExecutionSessionData>(entities, "executionSession").some(
+    (session) => session.payload.planId === planId && session.payload.status === "completed" && session.payload.outcome === "activityCompleted",
+  );
+
 export const fixedPlans = (entities: CoreEntity[]) =>
   active<PlanData>(entities, "plan").filter(
-    (plan) => usablePlan(plan) && plan.payload.flexibility === "fixed",
+    (plan) => usablePlan(plan) && plan.payload.flexibility === "fixed" && !isPlanActivityCompleted(entities, plan.id),
   );
+
+export type EarlyStartPolicy = { maximumLeadMinutes: number; minimumWindowMinutes: number };
+export const DEFAULT_EARLY_START_POLICY: EarlyStartPolicy = { maximumLeadMinutes: 60, minimumWindowMinutes: 5 };
+
+export function getEarlyStartCandidate(
+  entities: CoreEntity[],
+  now: Date,
+  settings: Partial<SettingsData> = {},
+  policy: EarlyStartPolicy = DEFAULT_EARLY_START_POLICY,
+) {
+  if (active<ExecutionSessionData>(entities, "executionSession").some(session => session.payload.status === "running")) return null;
+  if (getCurrentFixedPlan(entities, now)) return null;
+  const timestamp = now.getTime(), maximum = timestamp + policy.maximumLeadMinutes * 60000;
+  const candidate = active<PlanData>(entities, "plan")
+    .filter(plan => usablePlan(plan) && !isPlanActivityCompleted(entities, plan.id))
+    .filter(plan => {
+      const start = new Date(plan.payload.startAt).getTime();
+      const executable = plan.payload.type === "task" || plan.payload.type === "personal";
+      return executable && start > timestamp && start <= maximum;
+    })
+    .sort((a, b) => a.payload.startAt.localeCompare(b.payload.startAt))[0];
+  if (!candidate) return null;
+  const buffer = Math.max(0, settings.transitionBufferMinutes ?? 10);
+  const blocker = active<PlanData>(entities, "plan")
+    .filter(plan => plan.id !== candidate.id && usablePlan(plan) && !isPlanActivityCompleted(entities, plan.id))
+    .filter(plan => new Date(plan.payload.startAt).getTime() > timestamp)
+    .sort((a, b) => a.payload.startAt.localeCompare(b.payload.startAt))[0];
+  if (blocker && new Date(blocker.payload.startAt).getTime() <= new Date(candidate.payload.startAt).getTime()) return null;
+  const limit = Math.min(
+    new Date(candidate.payload.endAt).getTime(),
+    blocker ? new Date(blocker.payload.startAt).getTime() - buffer * 60000 : Number.POSITIVE_INFINITY,
+  );
+  const usableMinutes = minutes(timestamp, limit);
+  const task = candidate.payload.taskId ? active<TaskData>(entities, "task").find(item => item.id === candidate.payload.taskId) : null;
+  const minimum = Math.max(policy.minimumWindowMinutes, task?.payload.nextAction?.minimumUsefulMinutes || 1);
+  return usableMinutes >= minimum ? { plan: candidate, usableMinutes } : null;
+}
 
 export function getCurrentFixedPlan(entities: CoreEntity[], now: Date) {
   const timestamp = now.getTime();
@@ -102,6 +146,7 @@ export function getUsableWindow(
     .filter(
       (plan) =>
         usablePlan(plan) &&
+        !isPlanActivityCompleted(entities, plan.id) &&
         new Date(plan.payload.startAt) > now &&
         new Date(plan.payload.startAt) < anchorLimit,
     )
@@ -140,7 +185,7 @@ export function getFreeWindows(
   settings?: Partial<SettingsData>,
 ) {
   const windows: FreeWindow[] = [];
-  const plans = active<PlanData>(entities, "plan").filter(usablePlan);
+  const plans = active<PlanData>(entities, "plan").filter(plan => usablePlan(plan) && !isPlanActivityCompleted(entities, plan.id));
   const cursorDay = new Date(now);
   cursorDay.setHours(0, 0, 0, 0);
   const lastDay = new Date(end);
@@ -191,7 +236,7 @@ export function reserveDeadlines(
   const tasks = active<TaskData>(entities, "task")
     .filter((task) => task.payload.status === "open" && task.payload.deadline)
     .sort((a, b) => String(a.payload.deadline).localeCompare(String(b.payload.deadline)));
-  const plans = active<PlanData>(entities, "plan").filter(usablePlan);
+  const plans = active<PlanData>(entities, "plan").filter(plan => usablePlan(plan) && !isPlanActivityCompleted(entities, plan.id));
   const finalDeadline = tasks.reduce(
     (latest, task) => Math.max(latest, new Date(task.payload.deadline!).getTime()),
     now.getTime(),

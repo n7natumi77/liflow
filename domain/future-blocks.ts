@@ -124,7 +124,7 @@ export function planFutureBlocks(
   const payload: PlanData = {
     title: task.payload.title,
     taskId: task.id,
-    projectId: task.payload.projectId || null,
+    projectId: null,
     calendarCategoryId: task.payload.calendarCategoryId || null,
     directionId: selected.directionId,
     startAt: start.toISOString(),
