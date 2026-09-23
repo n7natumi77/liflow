@@ -4,6 +4,7 @@ import {
   type ActualData,
   type CoreEntity,
   type PlanData,
+  type SettingsData,
   type TaskData,
 } from "./core.ts";
 
@@ -20,12 +21,26 @@ export type DirectionPolicy = {
   protection: "none" | "soft" | "strong";
 };
 export const DEFAULT_DIRECTION_POLICIES: DirectionPolicy[] = [
-  { directionId: "direction_academic", windowDays: 7, protection: "none" },
-  { directionId: "direction_specialty", windowDays: 14, maxGapDays: 7, targetMinutes: 120, protection: "soft" },
+  { directionId: "direction_academic", windowDays: 7, maxGapDays: 7, targetMinutes: 60, protection: "soft" },
+  { directionId: "direction_specialty", windowDays: 14, maxGapDays: 7, targetMinutes: 120, protection: "strong" },
   { directionId: "direction_career", windowDays: 14, maxGapDays: 7, targetMinutes: 60, protection: "strong" },
   { directionId: "direction_life", windowDays: 7, protection: "none" },
   { directionId: "direction_world", windowDays: 14, protection: "none" },
 ];
+
+export function directionPoliciesFromSettings(settings?: Partial<SettingsData>) {
+  const stored = settings?.directionPolicies || {};
+  return DEFAULT_DIRECTION_POLICIES.map((fallback) => {
+    const item = stored[fallback.directionId];
+    if (!item) return fallback;
+    return {
+      ...fallback,
+      protection: item.level === "off" ? "none" : item.level === "weak" ? "soft" : "strong",
+      maxGapDays: item.maxGapDays ?? fallback.maxGapDays,
+      targetMinutes: item.targetMinutes ?? fallback.targetMinutes,
+    } satisfies DirectionPolicy;
+  });
+}
 
 export function resolveActualDirection(
   actual: CoreEntity<ActualData>,

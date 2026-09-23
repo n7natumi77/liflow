@@ -18,8 +18,9 @@ const server = await createServer({
   resolve: { alias: [
     { find: "./firebase-store", replacement: path.join(root, "tests/ui/fixture-store.ts") },
     { find: "./discord-client", replacement: path.join(root, "tests/ui/fixture-discord.ts") },
+    { find: "./notifications-client", replacement: path.join(root, "tests/ui/fixture-notifications.ts") },
   ] },
-  server: { host: "127.0.0.1", port: 4175, strictPort: true, fs: { allow: [root] } },
+  server: { host: "127.0.0.1", port: 4176, strictPort: true, fs: { allow: [root] } },
 });
 await server.listen();
 const browser = await chromium.launch({ channel: "msedge", headless: true });
@@ -47,7 +48,7 @@ const drag = async (locator, delta) => {
   await page.mouse.up();
 };
 try {
-  await page.goto("http://127.0.0.1:4175", { waitUntil: "networkidle" });
+  await page.goto("http://127.0.0.1:4176", { waitUntil: "networkidle" });
   await page.locator(".diary-hero").waitFor();
   assert.ok((await page.locator(".fairy-bubble").innerText()).length > 0);
   assert.equal(await page.locator(".cat-fairy").count(), 0);
@@ -165,6 +166,81 @@ try {
     assert.equal(await page.locator(".diary-main>header h1").innerText(), label);
     check(label + " view renders");
   }
+  const pwa = await page.evaluate(async () => {
+    const manifest = await (await fetch("/manifest.webmanifest")).json();
+    const worker = await (await fetch("/sw.js")).text();
+    return { manifest, hasClick: worker.includes("notificationclick"), hasPush: worker.includes('addEventListener("push"') };
+  });
+  assert.equal(pwa.manifest.display, "standalone");
+  assert.ok(pwa.manifest.icons.length >= 2 && pwa.hasClick && pwa.hasPush);
+  check("PWA manifest, install icons, Service Worker push and notification click are available");
+  await page.evaluate(() => window.__notificationFixture.denyNext());
+  await page.getByRole("button", { name: "通知を許可する", exact: true }).click();
+  await page.getByText("通知は許可されませんでした。アプリは通知なしでも使えます。").waitFor();
+  assert.ok(await page.getByRole("heading", { name: "Liflowから境界を知らせる" }).count());
+  check("Notification permission denial leaves Settings and the app usable");
+  await page.getByRole("button", { name: "通知を許可する", exact: true }).click();
+  await page.getByText("この端末への通知を有効にしました。設定を保存してください。").waitFor();
+  await page.getByLabel("次の起床予定", { exact: true }).fill("2026-09-17T08:15");
+  await page.locator(".settings-panel").first().getByRole("button", { name: "保存する", exact: true }).click();
+  await waitFor(async () => (await snapshot()).some(item => item.type === "sleepRecord" && item.payload.plannedWakeAt?.includes("2026-09-16T23:15")));
+  assert.equal((await get("settings")).payload.notificationsEnabled, true);
+  check("Notification settings and next plannedWakeAt persist after explicit permission");
+
+  await menuTab("ルーティン");
+  await page.getByRole("button", { name: "繰り返しを追加", exact: true }).click();
+  await page.getByLabel("タイトル", { exact: true }).fill("毎日の読書");
+  await page.getByLabel("予定の繰り返し", { exact: true }).selectOption("daily");
+  await page.getByLabel("繰り返し予定の開始時刻", { exact: true }).fill("20:00");
+  await page.getByLabel("繰り返し予定の所要時間", { exact: true }).fill("30");
+  await page.getByLabel("繰り返し予定の方向", { exact: true }).selectOption("direction_specialty");
+  await page.getByRole("button", { name: "保存する", exact: true }).click();
+  await waitFor(async () => (await snapshot()).some(item => item.type === "plan" && item.payload.source === "recurring" && item.payload.title === "毎日の読書"));
+  check("Recurring Rule create/read generates deterministic future Plans");
+  await page.getByRole("button", { name: "毎日の読書の繰り返しを編集", exact: true }).click();
+  await page.getByLabel("タイトル", { exact: true }).fill("毎日の読書・更新");
+  await page.getByRole("button", { name: "保存する", exact: true }).click();
+  await waitFor(async () => (await snapshot()).some(item => item.type === "plan" && item.payload.source === "recurring" && item.payload.title === "毎日の読書・更新"));
+  check("Recurring Rule update changes only untouched generated occurrences");
+  await mainTab("カレンダー");
+  await page.locator(".view-tabs").getByRole("button", { name: "日", exact: true }).click();
+  await scrollCalendar(19);
+  await page.locator(".plan-content").filter({ hasText: "毎日の読書・更新" }).first().click();
+  await page.getByLabel("開始", { exact: true }).fill("20:30");
+  await page.getByLabel("終了", { exact: true }).fill("21:00");
+  await page.getByRole("button", { name: "保存する", exact: true }).click();
+  await waitFor(async () => (await snapshot()).some(item => item.type === "plan" && item.payload.title === "毎日の読書・更新" && item.payload.generationState === "overridden"));
+  check("Manual edits mark a recurring occurrence overridden and protect it from regeneration");
+  await menuTab("ルーティン");
+  await page.getByRole("button", { name: "毎日の読書・更新の繰り返しを編集", exact: true }).click();
+  await page.getByRole("button", { name: "削除", exact: true }).click();
+  await waitFor(async () => (await snapshot()).some(item => item.type === "recurringActivityRule" && item.payload.title === "毎日の読書・更新" && item.deletedAt));
+  assert.ok((await snapshot()).some(item => item.type === "plan" && item.payload.title === "毎日の読書・更新" && item.payload.generationState === "overridden" && !item.deletedAt));
+  check("Recurring Rule delete preserves the manually overridden occurrence and cancels untouched future Plans");
+
+  await mainTab("今");
+  await page.locator(".direction-insights").waitFor();
+  assert.ok(await page.locator(".direction-card").count() >= 5);
+  await page.getByLabel("進路の保護強度", { exact: true }).selectOption("strong");
+  await waitFor(async () => (await get("settings")).payload.directionPolicies?.direction_career?.level === "strong");
+  check("Direction summary shows 7/14-day Actual time, Need reason and editable policy");
+  const futureBlock = (await snapshot()).find(item => item.type === "plan" && item.payload.source === "futureBlock");
+  assert.ok(futureBlock);
+  await mainTab("カレンダー");
+  await page.locator(".view-tabs").getByRole("button", { name: "日", exact: true }).click();
+  await page.locator(".plan-content").filter({ hasText: futureBlock.payload.title }).first().click();
+  const futureStart = await page.getByLabel("開始", { exact: true }).inputValue();
+  const [futureHour, futureMinute] = futureStart.split(":").map(Number);
+  const shiftedMinutes = futureHour * 60 + futureMinute + 15;
+  await page.getByLabel("開始", { exact: true }).fill(`${String(Math.floor(shiftedMinutes / 60)).padStart(2, "0")}:${String(shiftedMinutes % 60).padStart(2, "0")}`);
+  await page.getByRole("button", { name: "保存する", exact: true }).click();
+  await waitFor(async () => (await get(futureBlock.id)).payload.generationState === "overridden");
+  check("Future Block is visible and a manual edit prevents automatic relocation");
+
+  await page.goto("http://127.0.0.1:4176/?notification=wake", { waitUntil: "networkidle" });
+  await page.locator(".notification-entry").waitFor();
+  assert.equal(await page.locator(".focus-label").count(), 1);
+  check("Notification deep link returns to one recomputed Now action");
   await mainTab("未整理");
   assert.ok(await page.locator(".organize-list").count());
   check("Unresolved view renders");
@@ -215,7 +291,8 @@ try {
   assert.deepEqual(errors, []);
   check("No uncaught browser errors");
 } catch(error) {
-  await screenshot("failure");
+  console.error("SMOKE_FAILURE", error);
+  await page.screenshot({ path: path.join(artifacts, "failure.png"), fullPage: false, animations: "disabled", timeout: 5000 }).catch(() => undefined);
   console.log("DIALOG", await page.locator("dialog").allTextContents());
   console.log("OVERFLOW",await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,items:Array.from(document.querySelectorAll("body *")).filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,12).map(e=>({tag:e.tagName,class:e.className,right:e.getBoundingClientRect().right}))})));
   throw error;

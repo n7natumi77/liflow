@@ -3,6 +3,9 @@
 import { inheritedDirection, type CoreEntity, type EntityType, type PlanData, type ActualData, type ConflictData, type ExecutionSessionData, type RoutineFlowData, type RoutineRunData, type SleepRecordData, type TaskData } from "../../domain/core";
 import { CURRENT_SCHEMA_VERSION, DEFAULT_DIRECTIONS, DEFAULT_MORNING_FLOW, DEFAULT_MORNING_FLOW_ID } from "../../domain/schema";
 import { completionPayloads, executionActualId, startRoutineRunPayload } from "../../domain/execution";
+import { planRecurringMutations, protectGeneratedPlanEdit } from "../../domain/recurrence";
+import { planFutureBlocks } from "../../domain/future-blocks";
+import type { NotificationJobData } from "../../domain/notifications";
 const timestamp = "2026-09-16T07:42:00.000Z";
 const at = (time: string) => new Date("2026-09-16T" + time + ":00+09:00").toISOString();
 const entity = (id: string, type: EntityType, payload: object): CoreEntity => ({ id, type, payload: payload as Record<string, unknown>, revision: 1, schemaVersion: CURRENT_SCHEMA_VERSION, createdAt: timestamp, updatedAt: timestamp, updatedBy: "fixture", deletedAt: null });
@@ -40,8 +43,9 @@ let entities = [
   entity("money1", "transaction", { title: "電車", amount: 420, direction: "expense", category: "交通", occurredAt: at("08:00"), status: "settled" }),
   entity("money2", "transaction", { title: "参考書の代金", amount: 2000, direction: "expense", category: "勉強", occurredAt: at("08:00"), expectedAt: at("10:00"), status: "expected", projectId: "project", taskId: "task2", planId: "library", actualId: "actual2", note: "ゼミで使う参考書" }),
   entity("income", "transaction", { title: "アルバイトの給与", amount: 28000, direction: "income", category: "給与", occurredAt: "2026-09-15T03:00:00Z", status: "settled" }),
-  entity("settings", "settings", { calendarView: "day", visibleCalendarCategories: [], showPlan: true, showActual: true, showTaskDeadlines: true, dayStart: "07:00", dayEnd: "23:00", guidanceIntensity: "strong", transitionBufferMinutes: 10, departureSafetyBufferMinutes: 10, targetSleepTime: "23:30", windDownMinutes: 45 }),
+  entity("settings", "settings", { calendarView: "day", visibleCalendarCategories: [], showPlan: true, showActual: true, showTaskDeadlines: true, dayStart: "07:00", dayEnd: "23:00", guidanceIntensity: "strong", transitionBufferMinutes: 10, departureSafetyBufferMinutes: 10, targetSleepTime: "23:30", windDownMinutes: 45, fallbackWakeTime: "08:00", wakeWindowMinutes: 180, notificationsEnabled: false, wakeNotifications: true, anchorNotifications: true, departureNotifications: true, executionNotifications: true, windDownNotifications: true }),
 ];
+let notificationJobs: NotificationJobData[] = [];
 type Listener = (items: CoreEntity[]) => void;
 const listeners = new Set<Listener>();
 let failNext = false;
@@ -83,10 +87,16 @@ export async function recordWakeAndStartMorningFlow(uid: string, now: Date, slee
   const run = existingRun || (flow ? await createEntity(uid, "routineRun", startRoutineRunPayload(flow, now) as unknown as Record<string, unknown>) as CoreEntity<RoutineRunData> : null);
   return { sleep: savedSleep, run };
 }
+export async function savePlannedWake(uid: string, date: string, plannedWakeAt: string, existing?: CoreEntity<SleepRecordData>) {
+  if (existing) return updateEntity(uid, existing, { ...existing.payload, plannedWakeAt, source: "manual", confidence: 1 }) as Promise<CoreEntity<SleepRecordData>>;
+  const saved = { ...entity(`sleep_${date}`, "sleepRecord", { date, plannedSleepAt: null, plannedWakeAt, estimatedSleepAt: null, actualWakeAt: null, source: "manual", confidence: 1 }), payload: { date, plannedSleepAt: null, plannedWakeAt, estimatedSleepAt: null, actualWakeAt: null, source: "manual", confidence: 1 } } as CoreEntity<SleepRecordData>;
+  entities = [...entities.filter(item => item.id !== saved.id), saved]; emit(); return saved;
+}
 export async function updateEntity(_uid: string, old: CoreEntity, payload: Record<string, unknown>, deleted = false) {
   guard(); const current = entities.find(item => item.id === old.id);
   if (!current || current.revision !== old.revision) throw new Error("revision_conflict");
-  const saved = { ...current, payload, revision: current.revision + 1, updatedAt: new Date().toISOString(), deletedAt: deleted ? new Date().toISOString() : current.deletedAt };
+  const safePayload = current.type === "plan" ? protectGeneratedPlanEdit(current as CoreEntity<PlanData>, payload as PlanData) : payload;
+  const saved = { ...current, payload: safePayload, revision: current.revision + 1, updatedAt: new Date().toISOString(), deletedAt: deleted ? new Date().toISOString() : current.deletedAt };
   entities = entities.map(item => item.id === saved.id ? saved : item); emit(); return saved;
 }
 export async function listBackups() { return []; }
@@ -109,6 +119,23 @@ export async function deleteActualAndUnlinkPlan(uid: string, actual: CoreEntity<
   const unlinkedPlan = old.payload.actualId === actual.id ? await updateEntity(uid, old, { ...old.payload, actualId: null }) : old;
   return { deletedActual, unlinkedPlan };
 }
+const persistGenerated = (mutations: ReturnType<typeof planRecurringMutations> | ReturnType<typeof planFutureBlocks>["mutations"]) => {
+  const saved: CoreEntity<PlanData>[] = [];
+  for (const mutation of mutations) {
+    const current = entities.find(item => item.id === mutation.id) as CoreEntity<PlanData> | undefined;
+    if (mutation.kind === "create" && !current) {
+      const created = { ...entity(mutation.id, "plan", mutation.payload), payload: mutation.payload } as CoreEntity<PlanData>;
+      entities = [...entities, created]; saved.push(created);
+    } else if (current && current.payload.generationState === "generated") {
+      const next = { ...current, payload: mutation.payload, revision: current.revision + 1 };
+      entities = entities.map(item => item.id === next.id ? next : item); saved.push(next);
+    }
+  }
+  if (saved.length) emit(); return saved;
+};
+export async function syncRecurringPlans(_uid: string, source: CoreEntity[], now = new Date()) { return persistGenerated(planRecurringMutations(source, now)); }
+export async function syncFutureBlocks(_uid: string, source: CoreEntity[], now = new Date()) { const settings = source.find(item => item.type === "settings")?.payload || {}; const plan = planFutureBlocks(source, now, settings); return { plan, saved: persistGenerated(plan.mutations) }; }
+export async function syncNotificationJobs(_uid: string, jobs: NotificationJobData[]) { notificationJobs = structuredClone(jobs); return notificationJobs.length; }
 declare global {
   interface Window { __liflowFixture: { snapshot: () => CoreEntity[]; failNext: () => void; emptyTypes: (types: EntityType[]) => void } }
 }

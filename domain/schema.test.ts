@@ -36,7 +36,7 @@ const stored = (
   ...extra,
 });
 
-test("v1 to v2 to v3 to v4 to v5 migration remains available", () => {
+test("v1 to v2 to v3 to v4 to v5 to v6 migration remains available", () => {
   const legacy = stored("p", "project", { name: "研究" });
   delete legacy.schemaVersion;
   const entity = migrateEntity(legacy);
@@ -223,7 +223,7 @@ test("newer unknown schema is never reset or reinterpreted", () => {
   );
 });
 
-test("v4 entity families migrate to v5 without payload loss", () => {
+test("v4 entity families migrate through v5 to v6 without payload loss", () => {
   const source = [
     stored("rule", "recurringActivityRule", { title: "授業", active: true }, 4),
     stored("flow", "routineFlow", { name: "起床後", active: true, steps: [] }, 4),
@@ -247,4 +247,15 @@ test("v4 settings gain the Phase 1 safety controls and execution sessions are re
   assert.equal(settings.payload.windDownMinutes, 45);
   assert.equal(session.payload.status, "running");
   assert.equal(session.payload.actualId, null);
+});
+
+test("v5 Plans and Settings gain Phase 2 automation and notification defaults", () => {
+  const generated = migrateEntity(stored("plan", "plan", { title: "授業", startAt: "a", endAt: "b" }, 5));
+  const settings = migrateEntity(stored("settings", "settings", { calendarView: "week" }, 5));
+  assert.equal(generated.payload.source, null);
+  assert.equal(generated.payload.generationState, null);
+  assert.equal(generated.payload.recurrenceKey, null);
+  assert.equal(settings.payload.fallbackWakeTime, "08:00");
+  assert.equal(settings.payload.notificationsEnabled, false);
+  assert.equal((settings.payload.directionPolicies as Record<string, { level: string }>).direction_career.level, "strong");
 });

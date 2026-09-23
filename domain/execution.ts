@@ -11,6 +11,21 @@ import {
 
 export const executionActualId = (sessionId: string) => `actual_execution_${sessionId}`;
 
+/** Runtime locks are derived from durable Session entities, never the reverse. */
+export function deriveExecutionRuntimeState(entities: CoreEntity[]) {
+  const running = entities
+    .filter(
+      (item): item is CoreEntity<ExecutionSessionData> =>
+        item.type === "executionSession" &&
+        !item.deletedAt &&
+        (item.payload as ExecutionSessionData).status === "running",
+    )
+    .sort((a, b) => b.payload.startedAt.localeCompare(a.payload.startedAt))[0];
+  return running
+    ? { status: "running" as const, sessionId: running.id }
+    : { status: "completed" as const, sessionId: null };
+}
+
 export function createExecutionSessionPayload(
   target: CoreEntity<TaskData> | CoreEntity<PlanData>,
   now: Date,

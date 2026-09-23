@@ -6,11 +6,11 @@ import {
   type RoutineFlowData,
   type RoutineRunData,
   type SettingsData,
-  type SleepRecordData,
   type TaskData,
 } from "./core.ts";
-import { getDirectionNeeds } from "./directions.ts";
+import { directionPoliciesFromSettings, getDirectionNeeds } from "./directions.ts";
 import { currentRoutineStep } from "./execution.ts";
+import { getWakeWindow } from "./wake.ts";
 import {
   getCurrentFixedPlan,
   getDepartureAnchor,
@@ -68,6 +68,8 @@ export const DEFAULT_NOW_SETTINGS: Required<
     | "departureSafetyBufferMinutes"
     | "targetSleepTime"
     | "windDownMinutes"
+    | "fallbackWakeTime"
+    | "wakeWindowMinutes"
   >
 > = {
   dayStart: "07:00",
@@ -77,11 +79,8 @@ export const DEFAULT_NOW_SETTINGS: Required<
   departureSafetyBufferMinutes: 10,
   targetSleepTime: "23:30",
   windDownMinutes: 45,
-};
-
-const dateKey = (date: Date) => {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  fallbackWakeTime: "08:00",
+  wakeWindowMinutes: 180,
 };
 const todayAt = (now: Date, value: string) => {
   const [hour, minute] = value.split(":").map(Number);
@@ -199,16 +198,14 @@ export function getNowDecision(
     };
   }
 
-  const hour = now.getHours();
-  const sleep = active<SleepRecordData>(entities, "sleepRecord").find(
-    (item) => item.payload.date === dateKey(now),
-  );
-  if (hour >= 4 && hour < 12 && !sleep?.payload.actualWakeAt) {
+  const wakeWindow = getWakeWindow(entities, now, settings);
+  if (wakeWindow?.shouldPrompt) {
     return {
       ...base,
       mode: "morning",
       primaryAction: { kind: "wake", title: "起きた？" },
       reason: "wake_check",
+      reasonDetails: wakeWindow,
     };
   }
   if (routine) {
@@ -285,7 +282,7 @@ export function getNowDecision(
       reasonDetails: reservations.find((item) => item.taskId === tight.id),
     };
   }
-  for (const need of getDirectionNeeds(entities, now)) {
+  for (const need of getDirectionNeeds(entities, now, directionPoliciesFromSettings(settings))) {
     const task = tasks.find((item) => item.payload.directionId === need.directionId);
     if (task && window.usableMinutes >= (task.payload.nextAction?.minimumUsefulMinutes || 1)) {
       return {

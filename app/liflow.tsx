@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Home,
   CalendarDays,
@@ -61,8 +61,12 @@ import {
   recordWakeAndStartMorningFlow,
   resolveConflict,
   restoreBackup,
+  savePlannedWake,
   startExecutionSession,
   subscribeEntities,
+  syncFutureBlocks,
+  syncNotificationJobs,
+  syncRecurringPlans,
   updateEntity,
   type BackupSummary,
   type SyncState,
@@ -70,6 +74,8 @@ import {
 import { executeCommandBatch, parseCommandBatch } from "../domain/commands";
 import { sendToDiscord } from "./discord-client";
 import { createExecutionSessionPayload, advanceRoutineRun } from "../domain/execution";
+import { buildNotificationJobs } from "../domain/notifications";
+import { disablePushNotifications, enablePushNotifications, notificationCapability, refreshPushSubscription, registerPwaServiceWorker } from "./notifications-client";
 
 const nav = [
   ["now", "今", Home],
@@ -112,6 +118,9 @@ function LiflowApp({
   const [modal, setModal] = useState<Modal>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [clock, setClock] = useState(new Date());
+  const [notificationEntry] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("notification") || "");
+  const automationSignature = useRef("");
+  const notificationsEnabled = active<SettingsData>(entities, "settings")[0]?.payload.notificationsEnabled;
   useEffect(() => {
     let stop = () => {},
       cancelled = false;
@@ -148,6 +157,37 @@ function LiflowApp({
       clearInterval(t);
     };
   }, [userId]);
+  useEffect(() => {
+    void registerPwaServiceWorker().catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    if (!loaded) return;
+    const signature = entities.map(item => `${item.id}:${item.revision}:${item.deletedAt || ""}`).sort().join("|");
+    if (automationSignature.current === signature) return;
+    automationSignature.current = signature;
+    let cancelled = false;
+    const merge = (base: CoreEntity[], saved: CoreEntity[]) => [
+      ...base.filter(item => !saved.some(next => next.id === item.id)),
+      ...saved,
+    ];
+    void (async () => {
+      try {
+        let next = entities;
+        const recurring = await syncRecurringPlans(userId, next, new Date());
+        next = merge(next, recurring);
+        const future = await syncFutureBlocks(userId, next, new Date());
+        next = merge(next, future.saved);
+        await syncNotificationJobs(userId, buildNotificationJobs(userId, next, new Date()));
+        if (!cancelled && (recurring.length || future.saved.length)) setEntities(next);
+      } catch (reason) {
+        console.error("phase2_automation_failed", reason);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [entities, loaded, userId]);
+  useEffect(() => {
+    if (notificationsEnabled) void refreshPushSubscription(userId).catch(() => undefined);
+  }, [notificationsEnabled, userId]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -436,6 +476,7 @@ function LiflowApp({
                 recordWake={recordWake}
                 advanceFlow={advanceFlow}
                 recordFatigue={recordFatigue}
+                notificationEntry={notificationEntry}
               />
             )}
             {tab === "today" && (
@@ -514,8 +555,9 @@ function LiflowApp({
             )}
             {tab === "settings" && (
               <SettingsView
-                userId={userId}
-                settings={settings}
+                 userId={userId}
+                 entities={entities}
+                 settings={settings}
                 conflicts={conflicts}
                 nowPlan={nowPlan}
                 nextPlan={nextPlan}
@@ -690,6 +732,7 @@ export function CommandPalette({
 
 export function SettingsView({
   userId,
+  entities,
   settings,
   conflicts,
   nowPlan,
@@ -700,6 +743,7 @@ export function SettingsView({
   onConflictResolved,
 }: {
   userId: string;
+  entities: CoreEntity[];
   settings?: CoreEntity<SettingsData>;
   conflicts: CoreEntity<ConflictData>[];
   nowPlan?: CoreEntity<PlanData>;
@@ -718,6 +762,21 @@ export function SettingsView({
     [departureBuffer, setDepartureBuffer] = useState(String(settings?.payload.departureSafetyBufferMinutes ?? 10)),
     [targetSleep, setTargetSleep] = useState(settings?.payload.targetSleepTime || "23:30"),
     [windDown, setWindDown] = useState(String(settings?.payload.windDownMinutes ?? 45)),
+    [fallbackWake, setFallbackWake] = useState(settings?.payload.fallbackWakeTime || "08:00"),
+    [wakeWindow, setWakeWindow] = useState(String(settings?.payload.wakeWindowMinutes ?? 180)),
+    [notificationsOn, setNotificationsOn] = useState(settings?.payload.notificationsEnabled ?? false),
+    [wakeNotifications, setWakeNotifications] = useState(settings?.payload.wakeNotifications ?? true),
+    [anchorNotifications, setAnchorNotifications] = useState(settings?.payload.anchorNotifications ?? true),
+    [departureNotifications, setDepartureNotifications] = useState(settings?.payload.departureNotifications ?? true),
+    [executionNotifications, setExecutionNotifications] = useState(settings?.payload.executionNotifications ?? true),
+    [windDownNotifications, setWindDownNotifications] = useState(settings?.payload.windDownNotifications ?? true),
+    [notificationMessage, setNotificationMessage] = useState(""),
+    [nextWake, setNextWake] = useState(() => {
+      const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); const date = localDate(tomorrow);
+      const planned = active<SleepRecordData>(entities, "sleepRecord").find(item => item.payload.date === date)?.payload.plannedWakeAt;
+      const candidate = planned ? new Date(planned) : new Date(`${date}T${settings?.payload.fallbackWakeTime || "08:00"}:00`);
+      return `${localDate(candidate)}T${localTime(candidate)}`;
+    }),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
     [backups, setBackups] = useState<BackupSummary[]>([]),
@@ -750,6 +809,7 @@ export function SettingsView({
     setBusy(true);
     setMessage("");
     const payload: SettingsData = {
+      ...settings?.payload,
       calendarView: settings?.payload.calendarView || "week",
       visibleCalendarCategories:
         settings?.payload.visibleCalendarCategories || [],
@@ -763,16 +823,40 @@ export function SettingsView({
       departureSafetyBufferMinutes: Math.max(0, Number(departureBuffer) || 0),
       targetSleepTime: targetSleep || null,
       windDownMinutes: Math.max(0, Number(windDown) || 0),
+      fallbackWakeTime: fallbackWake || null,
+      wakeWindowMinutes: Math.max(30, Number(wakeWindow) || 180),
+      notificationsEnabled: notificationsOn,
+      wakeNotifications,
+      anchorNotifications,
+      departureNotifications,
+      executionNotifications,
+      windDownNotifications,
     };
     try {
       if (settings) await update(settings, payload);
       else await create("settings", payload);
+      if (nextWake) {
+        const wake = new Date(nextWake), date = localDate(wake), planned = active<SleepRecordData>(entities, "sleepRecord").find(item => item.payload.date === date);
+        await savePlannedWake(userId, date, wake.toISOString(), planned);
+      }
+      if (!notificationsOn) await disablePushNotifications(userId).catch(() => undefined);
       setMessage("保存しました。");
     } catch {
       /* 上位で同期エラーを表示する */
     } finally {
       setBusy(false);
     }
+  };
+  const enableNotifications = async () => {
+    setBusy(true); setNotificationMessage("");
+    try {
+      const result = await enablePushNotifications(userId);
+      if (result.enabled) { setNotificationsOn(true); setNotificationMessage("この端末への通知を有効にしました。設定を保存してください。"); }
+      else setNotificationMessage("通知は許可されませんでした。アプリは通知なしでも使えます。");
+    } catch (reason) {
+      const code = reason instanceof Error ? reason.message : "";
+      setNotificationMessage(code === "notification_not_configured" ? "Push配信用の公開鍵が未設定です。VAPID設定後に有効化できます。" : code === "notification_unsupported" ? "このブラウザはWeb Pushに対応していません。" : "通知を有効にできませんでした。ブラウザ設定を確認してください。");
+    } finally { setBusy(false); }
   };
   const label = (payload: Record<string, unknown>) =>
     String(
@@ -879,6 +963,9 @@ export function SettingsView({
           <label>出発安全バッファ（分）<input type="number" min="0" step="1" value={departureBuffer} onChange={event => setDepartureBuffer(event.target.value)} /></label>
           <label>就寝目標<input type="time" value={targetSleep} onChange={event => setTargetSleep(event.target.value)} /></label>
           <label>Wind Down（分）<input type="number" min="0" step="1" value={windDown} onChange={event => setWindDown(event.target.value)} /></label>
+          <label>通常の起床候補<input aria-label="通常の起床候補" type="time" value={fallbackWake} onChange={event => setFallbackWake(event.target.value)} /></label>
+          <label>起床確認の猶予（分）<input type="number" min="30" step="15" value={wakeWindow} onChange={event => setWakeWindow(event.target.value)} /></label>
+          <label>次の起床予定<input aria-label="次の起床予定" type="datetime-local" value={nextWake} onChange={event => setNextWake(event.target.value)} /></label>
         </div>
         {message && (
           <p
@@ -894,6 +981,20 @@ export function SettingsView({
         <button className="save" disabled={busy} onClick={save}>
           {busy ? "処理中…" : "保存する"}
         </button>
+      </section>
+      <section className="panel settings-panel notification-settings">
+        <div><p className="kicker">PWA・通知</p><h2>Liflowから境界を知らせる</h2><p>許可ボタンを押した時だけブラウザへ確認します。拒否しても通常機能は変わりません。</p></div>
+        <p className="notification-capability">現在：{notificationCapability() === "granted" ? "このブラウザで許可済み" : notificationCapability() === "denied" ? "ブラウザで拒否中" : notificationCapability() === "not-configured" ? "配信用公開鍵が未設定" : notificationCapability() === "unsupported" ? "このブラウザは非対応" : "まだ確認していません"}</p>
+        <button className="diary-button primary" disabled={busy} onClick={() => void enableNotifications()}>通知を許可する</button>
+        <label className="checkbox-label"><input type="checkbox" checked={notificationsOn} onChange={event => setNotificationsOn(event.target.checked)}/>通知全体を有効にする</label>
+        <div className="notification-options">
+          <label className="checkbox-label"><input type="checkbox" checked={wakeNotifications} onChange={event => setWakeNotifications(event.target.checked)}/>起床・支度</label>
+          <label className="checkbox-label"><input type="checkbox" checked={anchorNotifications} onChange={event => setAnchorNotifications(event.target.checked)}/>固定予定の接近</label>
+          <label className="checkbox-label"><input type="checkbox" checked={departureNotifications} onChange={event => setDepartureNotifications(event.target.checked)}/>出発</label>
+          <label className="checkbox-label"><input type="checkbox" checked={executionNotifications} onChange={event => setExecutionNotifications(event.target.checked)}/>実行の切り上げ</label>
+          <label className="checkbox-label"><input type="checkbox" checked={windDownNotifications} onChange={event => setWindDownNotifications(event.target.checked)}/>Wind Down</label>
+        </div>
+        {notificationMessage && <p className="settings-saved" role="status">{notificationMessage}</p>}
       </section>
       <section className="panel settings-panel">
         <p className="kicker">同期の競合</p>

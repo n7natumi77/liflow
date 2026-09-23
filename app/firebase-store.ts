@@ -1,12 +1,16 @@
 'use client';
-import {collection,doc,getDoc,getDocs,onSnapshot,runTransaction,setDoc,writeBatch,type DocumentData} from 'firebase/firestore';
+import {collection,doc,getDoc,getDocs,onSnapshot,query,runTransaction,setDoc,where,writeBatch,type DocumentData} from 'firebase/firestore';
 import {firestore} from './firebase-client';
 import {inheritedDirection,shiftedPlan,type ActualData,type ConflictData,type CoreEntity,type EntityType,type ExecutionSessionData,type PlanData,type RoutineFlowData,type RoutineRunData,type SleepRecordData,type TaskData} from '../domain/core';
 import {CURRENT_SCHEMA_VERSION,assertMigrationCandidate,countEntities,createSnapshotMigrationPlan,migrateEntity,migrateSnapshot,type StoredEntity} from '../domain/schema';
-import {executionActualId,startRoutineRunPayload} from '../domain/execution';
+import {deriveExecutionRuntimeState,executionActualId,startRoutineRunPayload} from '../domain/execution';
+import {planRecurringMutations,protectGeneratedPlanEdit} from '../domain/recurrence';
+import {planFutureBlocks} from '../domain/future-blocks';
+import {deviceSubscriptionPayload,disableDeviceSubscription,notificationJobId,type DeviceSubscriptionData,type NotificationJobData} from '../domain/notifications';
 
 export type SyncState='接続中'|'同期済み'|'オフライン'|'同期エラー';
-const deviceId=()=>{let id=localStorage.getItem('liflow_device_id_v1');if(!id){id=`device_${crypto.randomUUID()}`;localStorage.setItem('liflow_device_id_v1',id)}return id};
+export const localDeviceId=()=>{let id=localStorage.getItem('liflow_device_id_v1');if(!id){id=`device_${crypto.randomUUID()}`;localStorage.setItem('liflow_device_id_v1',id)}return id};
+const deviceId=localDeviceId;
 const entityFromDoc=(id:string,data:DocumentData):StoredEntity=>({id,type:data.type as EntityType,payload:data.payload||{},schemaVersion:Number(data.schemaVersion||1),revision:Number(data.revision||1),createdAt:String(data.createdAt||''),updatedAt:String(data.updatedAt||''),updatedBy:String(data.updatedBy||''),deletedAt:data.deletedAt?String(data.deletedAt):null});
 export type BackupSummary={id:string;timestamp:string;dataCount:number;status:string;schemaVersion:number;reason?:string};
 
@@ -14,17 +18,19 @@ async function createSafetyBackup(uid:string,source:StoredEntity[],reason:string
 
 export async function listBackups(uid:string){const snapshot=await getDocs(collection(firestore,'users',uid,'backups'));return snapshot.docs.map(item=>{const data=item.data();return {id:item.id,timestamp:String(data.timestamp||''),dataCount:Number(data.dataCount||0),status:String(data.status||''),schemaVersion:Number(data.schemaVersion||1),reason:data.reason?String(data.reason):undefined} satisfies BackupSummary}).filter(item=>item.status==='ready'||item.status==='migrated').sort((a,b)=>b.timestamp.localeCompare(a.timestamp))}
 
-export async function restoreBackup(uid:string,backupId:string){const entityCollection=collection(firestore,'users',uid,'entities'),currentSnapshot=await getDocs(entityCollection),current=currentSnapshot.docs.map(item=>entityFromDoc(item.id,item.data()));await createSafetyBackup(uid,current,'before-restore');const backupSnapshot=await getDocs(collection(firestore,'users',uid,'backups',backupId,'entities')),restored=migrateSnapshot(backupSnapshot.docs.map(item=>entityFromDoc(item.id,item.data())));if(!restored.length&&current.length)throw new Error('empty_backup');const latestSnapshot=await getDocs(entityCollection),latest=latestSnapshot.docs.map(item=>entityFromDoc(item.id,item.data()));if(latest.length!==current.length||latest.some(item=>current.find(old=>old.id===item.id)?.revision!==item.revision))throw new Error('restore_conflict');if(new Set([...latest.map(x=>x.id),...restored.map(x=>x.id)]).size>400)throw new Error('restore_too_large');const now=new Date().toISOString(),by=deviceId(),restoredById=new Map(restored.map(x=>[x.id,x])),batch=writeBatch(firestore);for(const item of restored){const existing=latest.find(x=>x.id===item.id);batch.set(doc(entityCollection,item.id),{...item,revision:(existing?.revision||item.revision)+1,updatedAt:now,updatedBy:by})}for(const item of latest)if(!restoredById.has(item.id))batch.set(doc(entityCollection,item.id),{...migrateEntity(item),revision:item.revision+1,updatedAt:now,updatedBy:by,deletedAt:now});await batch.commit();return {count:restored.length}}
+export async function restoreBackup(uid:string,backupId:string){const entityCollection=collection(firestore,'users',uid,'entities'),currentSnapshot=await getDocs(entityCollection),current=currentSnapshot.docs.map(item=>entityFromDoc(item.id,item.data()));await createSafetyBackup(uid,current,'before-restore');const backupSnapshot=await getDocs(collection(firestore,'users',uid,'backups',backupId,'entities')),restored=migrateSnapshot(backupSnapshot.docs.map(item=>entityFromDoc(item.id,item.data())));if(!restored.length&&current.length)throw new Error('empty_backup');const latestSnapshot=await getDocs(entityCollection),latest=latestSnapshot.docs.map(item=>entityFromDoc(item.id,item.data()));if(latest.length!==current.length||latest.some(item=>current.find(old=>old.id===item.id)?.revision!==item.revision))throw new Error('restore_conflict');if(new Set([...latest.map(x=>x.id),...restored.map(x=>x.id)]).size>400)throw new Error('restore_too_large');const now=new Date().toISOString(),by=deviceId(),restoredById=new Map(restored.map(x=>[x.id,x])),batch=writeBatch(firestore);for(const item of restored){const existing=latest.find(x=>x.id===item.id);batch.set(doc(entityCollection,item.id),{...item,revision:(existing?.revision||item.revision)+1,updatedAt:now,updatedBy:by})}for(const item of latest)if(!restoredById.has(item.id))batch.set(doc(entityCollection,item.id),{...migrateEntity(item),revision:item.revision+1,updatedAt:now,updatedBy:by,deletedAt:now});await batch.commit();await repairExecutionRuntimeLock(uid,restored);return {count:restored.length}}
+
+export async function repairExecutionRuntimeLock(uid:string,entities:CoreEntity[]){const state=deriveExecutionRuntimeState(entities),ref=doc(firestore,'users',uid,'runtime','execution'),now=new Date().toISOString();await runTransaction(firestore,async transaction=>{const current=await transaction.get(ref),data=current.exists()?current.data():null;if(data?.status===state.status&&(data?.sessionId||null)===state.sessionId)return;transaction.set(ref,{...state,updatedAt:now})});return state}
 
 export async function prepareUserData(uid:string){
  const entityCollection=collection(firestore,'users',uid,'entities'),snapshot=await getDocs(entityCollection),source=snapshot.docs.map(item=>entityFromDoc(item.id,item.data())),now=new Date().toISOString(),by=deviceId();
  const plan=createSnapshotMigrationPlan(source,{now,updatedBy:by});
- if(!plan.requiresWrite)return {migrated:false,count:source.length};
+ if(!plan.requiresWrite){await repairExecutionRuntimeLock(uid,migrateSnapshot(source));return {migrated:false,count:source.length}}
  const migratedById=new Map(plan.entities.map(entity=>[entity.id,entity])),{backupId,backupRef}=await createSafetyBackup(uid,source,`schema-${CURRENT_SCHEMA_VERSION}`);
  try{
   for(const original of source){if(Number(original.schemaVersion||1)===CURRENT_SCHEMA_VERSION)continue;const next=migratedById.get(original.id);if(!next)throw new Error(`migration_entity_missing:${original.id}`);const ref=doc(entityCollection,original.id);await runTransaction(firestore,async transaction=>{const currentSnapshot=await transaction.get(ref);if(!currentSnapshot.exists())throw new Error(`migration_entity_missing:${original.id}`);const current=entityFromDoc(currentSnapshot.id,currentSnapshot.data());if(!assertMigrationCandidate(original,current))return;transaction.set(ref,{...next,revision:current.revision+1,updatedAt:new Date().toISOString(),updatedBy:deviceId()})})}
   for(const added of plan.addedEntities){const ref=doc(entityCollection,added.id);await runTransaction(firestore,async transaction=>{const currentSnapshot=await transaction.get(ref);if(currentSnapshot.exists()){const current=entityFromDoc(currentSnapshot.id,currentSnapshot.data());if(current.type!==added.type)throw new Error(`migration_id_collision:${added.id}`);return}transaction.set(ref,added)})}
-  await setDoc(backupRef,{status:'migrated',migrationCompletedAt:new Date().toISOString()},{merge:true});return {migrated:true,count:plan.entities.length,backupId};
+  await setDoc(backupRef,{status:'migrated',migrationCompletedAt:new Date().toISOString()},{merge:true});await repairExecutionRuntimeLock(uid,plan.entities);return {migrated:true,count:plan.entities.length,backupId};
  }catch(error){await setDoc(backupRef,{status:'failed',failedAt:new Date().toISOString(),error:error instanceof Error?error.message:'unknown'},{merge:true});throw error}
 }
 
@@ -92,14 +98,22 @@ export async function recordWakeAndStartMorningFlow(uid:string,now:Date,sleep:Co
  });
 }
 
+export async function savePlannedWake(uid:string,date:string,plannedWakeAt:string,existing?:CoreEntity<SleepRecordData>){
+ const ref=doc(firestore,'users',uid,'entities',existing?.id||`sleep_${date}`),by=deviceId(),now=new Date().toISOString();
+ return runTransaction(firestore,async transaction=>{const snapshot=await transaction.get(ref),remote=snapshot.exists()?migrateEntity(entityFromDoc(snapshot.id,snapshot.data())) as CoreEntity<SleepRecordData>:existing;
+  const payload:SleepRecordData={date,plannedSleepAt:remote?.payload.plannedSleepAt||null,plannedWakeAt,estimatedSleepAt:remote?.payload.estimatedSleepAt||null,actualWakeAt:remote?.payload.actualWakeAt||null,source:'manual',confidence:1};
+  const saved:CoreEntity<SleepRecordData>=remote?{...remote,payload,revision:remote.revision+1,updatedAt:now,updatedBy:by}:{id:ref.id,type:'sleepRecord',payload,schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:now,updatedAt:now,updatedBy:by,deletedAt:null};transaction.set(ref,saved);return saved;
+ });
+}
+
 export async function updateEntity(uid:string,entity:CoreEntity,payload:Record<string,unknown>,deleted=false){
- const ref=doc(firestore,'users',uid,'entities',entity.id),now=new Date().toISOString();
+ const ref=doc(firestore,'users',uid,'entities',entity.id),now=new Date().toISOString(),safePayload=entity.type==='plan'?protectGeneratedPlanEdit(entity as CoreEntity<PlanData>,payload as PlanData):payload;
  try{return await runTransaction(firestore,async transaction=>{
 	   const snapshot=await transaction.get(ref),remote=snapshot.exists()?migrateEntity(entityFromDoc(snapshot.id,snapshot.data())):entity;
    if(remote.revision!==entity.revision)throw new Error('revision_conflict');
-   const next:CoreEntity={...remote,payload,revision:remote.revision+1,updatedAt:now,updatedBy:deviceId(),deletedAt:deleted?now:remote.deletedAt};
+   const next:CoreEntity={...remote,payload:safePayload,revision:remote.revision+1,updatedAt:now,updatedBy:deviceId(),deletedAt:deleted?now:remote.deletedAt};
    transaction.set(ref,next);return next;
- });}catch(error){if(error instanceof Error&&error.message==='revision_conflict'){const remoteSnapshot=await getDoc(ref);if(remoteSnapshot.exists()){const remote=migrateEntity(entityFromDoc(remoteSnapshot.id,remoteSnapshot.data())),detectedAt=new Date().toISOString();await createEntity(uid,'conflict',{targetId:entity.id,targetType:entity.type,baseRevision:entity.revision,remoteRevision:remote.revision,localPayload:payload,remotePayload:remote.payload,status:'open',choice:null,detectedAt,resolvedAt:null} satisfies ConflictData)}}throw error}
+ });}catch(error){if(error instanceof Error&&error.message==='revision_conflict'){const remoteSnapshot=await getDoc(ref);if(remoteSnapshot.exists()){const remote=migrateEntity(entityFromDoc(remoteSnapshot.id,remoteSnapshot.data())),detectedAt=new Date().toISOString();await createEntity(uid,'conflict',{targetId:entity.id,targetType:entity.type,baseRevision:entity.revision,remoteRevision:remote.revision,localPayload:safePayload,remotePayload:remote.payload,status:'open',choice:null,detectedAt,resolvedAt:null} satisfies ConflictData)}}throw error}
 }
 
 export async function resolveConflict(uid:string,conflict:CoreEntity<ConflictData>,choice:'local'|'remote'){
@@ -152,4 +166,40 @@ export async function deleteActualAndUnlinkPlan(uid:string,actual:CoreEntity<Act
   const unlinkedPlan:CoreEntity<PlanData>=unlinkLegacyPointer?{...remotePlan,payload:{...remotePlan.payload,actualId:null},revision:remotePlan.revision+1,updatedAt:now,updatedBy:by}:remotePlan;
   transaction.set(actualRef,deletedActual);if(unlinkLegacyPointer)transaction.set(planRef,unlinkedPlan);return {deletedActual,unlinkedPlan};
  });
+}
+
+async function persistGeneratedPlans(uid:string,mutations:ReturnType<typeof planRecurringMutations>|ReturnType<typeof planFutureBlocks>['mutations']){
+ const entityCollection=collection(firestore,'users',uid,'entities'),saved:CoreEntity<PlanData>[]=[],by=deviceId();
+ for(const mutation of mutations){const ref=doc(entityCollection,mutation.id);const result=await runTransaction(firestore,async transaction=>{const snapshot=await transaction.get(ref),remote=snapshot.exists()?migrateEntity(entityFromDoc(snapshot.id,snapshot.data())) as CoreEntity<PlanData>:null,now=new Date().toISOString();
+   if(mutation.kind==='create'){if(remote)return remote;const created:CoreEntity<PlanData>={id:mutation.id,type:'plan',payload:mutation.payload,schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:now,updatedAt:now,updatedBy:by,deletedAt:null};transaction.set(ref,created);return created}
+   if(!remote||remote.deletedAt||remote.payload.generationState!=='generated')return remote;
+   const next:CoreEntity<PlanData>={...remote,payload:mutation.payload,revision:remote.revision+1,updatedAt:now,updatedBy:by};transaction.set(ref,next);return next;
+  });if(result)saved.push(result)}
+ return saved;
+}
+
+export async function syncRecurringPlans(uid:string,entities:CoreEntity[],now=new Date()){
+ return persistGeneratedPlans(uid,planRecurringMutations(entities,now));
+}
+
+export async function syncFutureBlocks(uid:string,entities:CoreEntity[],now=new Date()){
+ const plan=planFutureBlocks(entities,now,activeSettings(entities));
+ return {plan,saved:await persistGeneratedPlans(uid,plan.mutations)};
+}
+
+const activeSettings=(entities:CoreEntity[])=>entities.find(item=>item.type==='settings'&&!item.deletedAt)?.payload||{};
+
+export async function saveDeviceSubscription(uid:string,input:Pick<DeviceSubscriptionData,'deviceId'|'token'|'platform'>){
+ const ref=doc(firestore,'users',uid,'devices',input.deviceId),snapshot=await getDoc(ref),current=snapshot.exists()?snapshot.data() as DeviceSubscriptionData:null,now=new Date().toISOString(),payload=deviceSubscriptionPayload(current,input,now);await setDoc(ref,payload);return payload;
+}
+
+export async function disableStoredDeviceSubscription(uid:string,id=deviceId()){
+ const ref=doc(firestore,'users',uid,'devices',id),snapshot=await getDoc(ref);if(!snapshot.exists())return null;const payload=disableDeviceSubscription(snapshot.data() as DeviceSubscriptionData,new Date().toISOString());await setDoc(ref,payload);return payload;
+}
+
+export async function syncNotificationJobs(uid:string,jobs:NotificationJobData[]){
+ const snapshot=await getDocs(query(collection(firestore,'notificationJobs'),where('uid','==',uid))),desired=new Map(jobs.map(job=>[notificationJobId(job.dedupeKey),job])),writes:{ref:ReturnType<typeof doc>;data:Record<string,unknown>}[]=[];
+ for(const [id,job] of desired){const current=snapshot.docs.find(item=>item.id===id)?.data() as NotificationJobData|undefined;writes.push({ref:doc(firestore,'notificationJobs',id),data:current?.sentAt?{...job,sentAt:current.sentAt,status:'sent',enabled:false,updatedAt:new Date().toISOString()}:{...current,...job,createdAt:current?.createdAt||job.createdAt}})}
+ for(const item of snapshot.docs){if(desired.has(item.id))continue;const data=item.data() as NotificationJobData;if(!data.sentAt&&data.enabled)writes.push({ref:item.ref,data:{...data,enabled:false,updatedAt:new Date().toISOString()}})}
+ for(let offset=0;offset<writes.length;offset+=400){const batch=writeBatch(firestore);for(const write of writes.slice(offset,offset+400))batch.set(write.ref,write.data);await batch.commit()}return writes.length;
 }

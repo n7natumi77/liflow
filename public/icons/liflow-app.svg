@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Liflow">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f5d7e7"/><stop offset="1" stop-color="#bca3d5"/></linearGradient></defs>
+  <rect width="512" height="512" rx="112" fill="url(#g)"/>
+  <circle cx="256" cy="256" r="154" fill="#fff8fb" stroke="#8f6bb8" stroke-width="14"/>
+  <path d="M190 142v191c0 27 17 39 45 39h93" fill="none" stroke="#6f4b91" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M335 139l9 22 22 9-22 9-9 22-9-22-22-9 22-9z" fill="#d987ad"/>
+</svg>

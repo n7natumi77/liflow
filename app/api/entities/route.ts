@@ -3,8 +3,9 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { getChatGPTUser } from '../../chatgpt-auth';
 import { getDb } from '../../../db';
 import { coreEntities } from '../../../db/schema';
+import { ENTITY_TYPES } from '../../../domain/core';
 
-const allowed = new Set(['task','plan','actual','inbox','routine','routineOccurrence','transaction','checkin','calendarCategory','project','settings']);
+const allowed = new Set<string>(ENTITY_TYPES);
 const json = (row: typeof coreEntities.$inferSelect) => ({...row, payload: JSON.parse(row.payload)});
 
 export async function GET(){

@@ -5,7 +5,7 @@ import {
   type EntityType,
 } from "./core.ts";
 
-export const CURRENT_SCHEMA_VERSION = 5;
+export const CURRENT_SCHEMA_VERSION = 6;
 export type StoredEntity = Omit<CoreEntity, "schemaVersion"> & { schemaVersion?: number };
 export type EntityCounts = Record<EntityType, number>;
 
@@ -176,6 +176,52 @@ const v5Defaults: Record<EntityType, Record<string, unknown>> = {
   conflict: {},
 };
 
+/** Only schema-v6 additions belong here. */
+const v6Defaults: Record<EntityType, Record<string, unknown>> = {
+  task: {},
+  plan: {
+    source: null,
+    generationState: null,
+    recurringRuleId: null,
+    recurrenceKey: null,
+    futureBlockDirectionId: null,
+    protection: null,
+  },
+  actual: {},
+  inbox: {},
+  routine: {},
+  routineOccurrence: {},
+  recurringActivityRule: {},
+  routineFlow: {},
+  routineRun: {},
+  sleepRecord: {},
+  conditionRecord: {},
+  executionSession: {},
+  transaction: {},
+  checkin: {},
+  calendarCategory: {},
+  direction: {},
+  project: {},
+  settings: {
+    fallbackWakeTime: "08:00",
+    wakeWindowMinutes: 180,
+    notificationsEnabled: false,
+    wakeNotifications: true,
+    anchorNotifications: true,
+    departureNotifications: true,
+    executionNotifications: true,
+    windDownNotifications: true,
+    directionPolicies: {
+      direction_academic: { level: "weak", maxGapDays: 7, targetMinutes: 60 },
+      direction_specialty: { level: "strong", maxGapDays: 7, targetMinutes: 120 },
+      direction_career: { level: "strong", maxGapDays: 7, targetMinutes: 60 },
+      direction_life: { level: "off" },
+      direction_world: { level: "off" },
+    },
+  },
+  conflict: {},
+};
+
 export const DEFAULT_DIRECTIONS = [
   {
     id: "direction_academic",
@@ -269,6 +315,13 @@ export function migrateEntity(input: StoredEntity): CoreEntity {
       ...entity,
       payload: { ...v5Defaults[entity.type], ...entity.payload },
       schemaVersion: 5,
+    };
+  }
+  if (entity.schemaVersion === 5) {
+    entity = {
+      ...entity,
+      payload: { ...v6Defaults[entity.type], ...entity.payload },
+      schemaVersion: 6,
     };
   }
   if (entity.schemaVersion !== CURRENT_SCHEMA_VERSION) {

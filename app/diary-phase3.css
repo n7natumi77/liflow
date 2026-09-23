@@ -169,6 +169,11 @@
 .diary-theme[data-theme="simple"] .routine-card.done .routine-stamp{animation:none;transform:none}
 .diary-theme[data-theme="simple"] .diary-page{animation:none}
 
+/* Phase 2 keeps automation explainable and secondary to the single Now action. */
+.notification-entry{grid-column:1/-1;padding:.75rem 1rem;border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);border-radius:14px;background:color-mix(in srgb,var(--accent) 9%,var(--paper));color:var(--ink-soft)}
+.direction-insights{grid-column:1/-1}.direction-intro{color:var(--ink-soft);margin:.25rem 0 1rem}.direction-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.75rem}.direction-card{padding:.9rem;border:1px solid var(--line);border-radius:16px;background:color-mix(in srgb,var(--paper) 92%,var(--accent) 8%)}.direction-card h3,.direction-card p{margin:.15rem 0}.direction-card>div>p,.direction-fact{color:var(--ink-soft);font-size:.82rem}.direction-need,.direction-missing{font-size:.78rem}.direction-need{color:var(--accent-strong)}.direction-missing{color:#9a5a22}.direction-card label{display:grid;gap:.25rem;margin-top:.65rem;font-size:.78rem}.direction-card select{min-height:40px}
+.recurring-rule-list,.routine-flow-list{margin-top:1.5rem;padding-top:1.25rem;border-top:1px dashed var(--line)}.recurring-rule-card{margin-top:.65rem}.notification-settings{display:grid;gap:.8rem}.notification-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.4rem}.notification-capability{color:var(--ink-soft);font-size:.88rem}
+
 @media(max-width:840px){
   .diary-theme .shell{padding-bottom:104px}
   .diary-main{padding-bottom:34px}
@@ -213,6 +218,7 @@
   .projects-notebook{padding-left:27px}.project-card{padding:15px}
   .reconcile-card{padding-inline:12px}.reconcile-actions{gap:6px}
   .transaction-copy>b{font-size:12px}.transaction-entry{gap:7px}
+  .direction-grid,.notification-options{grid-template-columns:1fr}
 }
 
 @media(prefers-reduced-motion:reduce){

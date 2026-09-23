@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Liflow">
+  <rect width="512" height="512" fill="#8f6bb8"/>
+  <circle cx="256" cy="256" r="166" fill="#fff8fb"/>
+  <path d="M194 148v181c0 25 16 36 42 36h88" fill="none" stroke="#6f4b91" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M334 150l9 22 22 9-22 9-9 22-9-22-22-9 22-9z" fill="#d987ad"/>
+</svg>

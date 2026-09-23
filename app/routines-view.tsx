@@ -5,6 +5,7 @@ import { active, routineOccurs, type CalendarCategoryData, type CoreEntity, type
 import { startRoutineRunPayload } from "../domain/execution";
 import { dateKey } from "./diary-time";
 import { ActionFeedback, DiaryEmpty, SectionDialog, SectionHeading, useDiaryAction, type SectionProps } from "./diary-section";
+import { RecurringRulesSection } from "./recurring-rules";
 
 const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
 const stateLabels = { pending: "未確認", done: "実施済み", skipped: "スキップ", unknown: "未確認" };
@@ -71,6 +72,7 @@ export function RoutinesView({ entities, create, update }: SectionProps) {
         {onToday && <div className="routine-card-actions"><button className="diary-button primary" aria-pressed={state === "done"} disabled={action.busy || state === "done"} onClick={() => record(routine, "done")}><Check size={15}/>実施</button><button className="diary-button" aria-pressed={state === "skipped"} disabled={action.busy || state === "skipped"} onClick={() => record(routine, "skipped")}>スキップ</button>{occurrence && <button className="diary-text-button" disabled={action.busy} onClick={() => void action.run(() => update(occurrence, occurrence.payload, true), "今日の記録を戻しました")}><RotateCcw size={13}/>記録を戻す</button>}</div>}
       </article>;
     }) : <DiaryEmpty title={filter === "today" ? "今日のルーティンはありません" : "この表示のルーティンはありません"}>「すべて」から曜日や休止の設定を確認できます。</DiaryEmpty>}</div>
+    <RecurringRulesSection entities={entities} create={create} update={update}/>
     <div className="routine-flow-list">
       <SectionHeading icon={<RotateCcw/>} title="生活手順" description="起床後や就寝前の流れを、Now画面で1つずつ案内します。" action={<button className="diary-button" onClick={() => beginFlow()}><Plus size={16}/>手順を追加</button>}/>
       {flows.map(flow => <article className="routine-card" key={flow.id}><div className="routine-card-header"><span className="routine-stamp"><RotateCcw/></span><div><h3>{flow.payload.name}</h3><span className="entry-meta"><span>{flow.payload.trigger.type}</span><span>{flow.payload.steps.length} Step</span>{!flow.payload.active && <span>休止中</span>}</span></div><button className="diary-icon-button" aria-label={`${flow.payload.name}を編集`} onClick={() => beginFlow(flow)}><Edit3 size={16}/></button></div><p className="routine-description">{flow.payload.steps.map(step => step.title).join(" → ")}</p><div className="routine-card-actions"><button className="diary-button primary" disabled={action.busy || !!runningFlow || !flow.payload.active} onClick={() => void action.run(() => create("routineRun", startRoutineRunPayload(flow, new Date()) as unknown as Record<string, unknown>), "生活手順を開始しました")}><Clock3 size={15}/>開始</button></div></article>)}

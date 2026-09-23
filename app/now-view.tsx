@@ -4,6 +4,7 @@ import { ArrowRight, CalendarDays, Check, ChevronRight, Clock3, Gem, Inbox, List
 import { active, layoutOverlaps, routineOccurs, unresolved, type CoreEntity, type EntityType, type PlanData, type TaskData, type ActualData, type RoutineData, type RoutineOccurrenceData, type CalendarCategoryData, type RoutineFlowData } from "../domain/core";
 import { getNowDecision, type StartAssistReason } from "../domain/now-engine";
 import { FairyCharacter } from "./fairy-character";
+import { DirectionInsights } from "./direction-insights";
 import { dateKey, dayRange, freeRanges, minuteLabel, scheduledPlans } from "./diary-time";
 import type { Capture, CaptureState } from "./diary-types";
 const time = (iso: string | Date) => new Date(iso).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
@@ -19,8 +20,9 @@ type Props = {
   recordWake: () => Promise<void>;
   advanceFlow: (runId: string, stepId: string, outcome: "completed" | "skipped", checkedItemIds?: string[]) => Promise<void>;
   recordFatigue: () => Promise<void>;
+  notificationEntry?: string;
 };
-export default function NowView({ entities, create, update, clock, plans, tasks, checks, setTab, setModal, beginExecution, endExecution, recordWake, advanceFlow, recordFatigue }: Props) {
+export default function NowView({ entities, create, update, clock, plans, tasks, checks, setTab, setModal, beginExecution, endExecution, recordWake, advanceFlow, recordFatigue, notificationEntry }: Props) {
   const [busy, setBusy] = useState<string | null>(null), [celebrating, setCelebrating] = useState(false), [notice, setNotice] = useState("");
   const [assistOpen, setAssistOpen] = useState(false), [assistReason, setAssistReason] = useState<StartAssistReason | null>(null);
   const [excludedTaskIds, setExcludedTaskIds] = useState<string[]>([]), [checkedItems, setCheckedItems] = useState<string[]>([]);
@@ -85,6 +87,7 @@ export default function NowView({ entities, create, update, clock, plans, tasks,
   };
   const label = action?.kind === "wake" ? "起床確認" : action?.kind === "session" ? "実行中" : action?.kind === "routine" ? "いまの支度" : action?.kind === "plan" ? "いまの予定" : action?.kind === "rest" ? "回復" : action?.kind === "task" ? "次はこれ" : decision.mode === "windDown" ? "眠る準備" : "自由時間";
   return <div className="diary-now">
+    {notificationEntry && <div className="notification-entry" role="status">通知から開きました。今の現実に合わせて、もう一度判断しています。</div>}
     <section className={"diary-hero panel" + (celebrating ? " is-celebrating" : "")} aria-label="今と次の予定">
       <div className="hero-content">
         <div className="hero-clock"><Clock3 size={16} /><time dateTime={clock.toISOString()}>{time(clock)}</time><span>あなたのペースで、今日を。</span></div>
@@ -132,6 +135,7 @@ export default function NowView({ entities, create, update, clock, plans, tasks,
       <button className="diary-text-button" onClick={() => setModal({ kind: "task" })}><Plus size={16} />タスクを追加</button>
     </section>
     <TodayFlow entities={entities} clock={clock} plans={plans} setModal={setModal} setTab={setTab} />
+    <DirectionInsights entities={entities} clock={clock} create={create} update={update}/>
     <section className="panel now-unresolved">
       <div className="section-title"><h2><Inbox size={18} />あとで整える</h2><span>{checks}</span></div>
       {pending.length ? pending.map(item => <button className="unresolved-preview" key={item.kind + item.id} onClick={() => setTab("inbox")}><Gem size={15} /><span>{item.label}</span><ChevronRight size={15} /></button>)

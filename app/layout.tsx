@@ -5,9 +5,13 @@ import "./diary.css";
 export const metadata: Metadata = {
   title: "Liflow — 今日を整える",
   description: "予定・タスク・生活記録をつないで、今なにをするかを決める生活管理アプリ。",
+  manifest: "/manifest.webmanifest",
+  applicationName: "Liflow",
+  appleWebApp: { capable: true, title: "Liflow", statusBarStyle: "default" },
   icons: {
-    icon: "/favicon.svg",
+    icon: [{ url: "/favicon.svg" }, { url: "/icons/liflow-app.svg", type: "image/svg+xml" }],
     shortcut: "/favicon.svg",
+    apple: "/icons/liflow-app.svg",
   },
 };
 

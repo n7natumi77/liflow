@@ -82,6 +82,13 @@ export type PlanData = {
   resolution?: PlanResolution | null;
   rescheduledFromPlanId?: string | null;
   rescheduledToPlanId?: string | null;
+  /** Phase 2 automation provenance. Manual Plans leave this unset. */
+  source?: "recurring" | "futureBlock" | null;
+  generationState?: "generated" | "overridden" | "cancelled" | null;
+  recurringRuleId?: string | null;
+  recurrenceKey?: string | null;
+  futureBlockDirectionId?: string | null;
+  protection?: "soft" | null;
 };
 
 export type ActualData = {
@@ -252,6 +259,22 @@ export type SettingsData = {
   departureSafetyBufferMinutes?: number;
   targetSleepTime?: string | null;
   windDownMinutes?: number;
+  fallbackWakeTime?: string | null;
+  wakeWindowMinutes?: number;
+  notificationsEnabled?: boolean;
+  wakeNotifications?: boolean;
+  anchorNotifications?: boolean;
+  departureNotifications?: boolean;
+  executionNotifications?: boolean;
+  windDownNotifications?: boolean;
+  directionPolicies?: Record<
+    string,
+    {
+      level: "off" | "weak" | "strong";
+      maxGapDays?: number;
+      targetMinutes?: number;
+    }
+  >;
 };
 export type ConflictData = {
   targetId: string;

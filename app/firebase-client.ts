@@ -13,7 +13,7 @@ const firebaseConfig={
  measurementId:'G-9WEX01BX81'
 };
 
-const app=getApps().length?getApp():initializeApp(firebaseConfig);
-export const firebaseAuth=getAuth(app);
-export const firestore=getFirestore(app);
+export const firebaseApp=getApps().length?getApp():initializeApp(firebaseConfig);
+export const firebaseAuth=getAuth(firebaseApp);
+export const firestore=getFirestore(firebaseApp);
 if(typeof window!=='undefined')void enableMultiTabIndexedDbPersistence(firestore).catch(()=>undefined);
