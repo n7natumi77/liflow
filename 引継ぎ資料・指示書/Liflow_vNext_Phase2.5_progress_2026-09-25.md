@@ -32,10 +32,11 @@
 - Cloudflare Production deploy: `https://liflow.errormeg.workers.dev`（source commit `a032528`、Version ID `05ac5157-f6ab-4970-9a5f-8985abbe812f`）
 - Production HTTP smoke: root / manifest / SW / 3 PNG icons / health = 200、Discord unsigned POST = 401
 - Production Firebase smoke: Auth origin受理 = 200、Firestore未認証read = 403 `PERMISSION_DENIED`
+- Production実機確認: PC・スマホ双方でFirebaseログイン、既存データ表示、端末間同期を確認（ユーザー報告）
 
 ## 外部環境が必要な未完了項目
 
-- Production URLでの実Firebaseログイン・既存データ表示、2端末同期、migration、競合、本番環境でのcross-user拒否確認
+- Production環境でのmigration、競合、cross-user拒否確認
 - 実スマートフォンへのPWA install、全主要画面、Execution Session、offline/reconnect
 - FCM foreground/background/closed delivery、click、sign-out/user切替
 - Discord Developer Portal接続、実Server query/mutation/bulk/long output/security
