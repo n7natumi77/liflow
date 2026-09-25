@@ -16,7 +16,7 @@
     "local": "node scripts/start-local.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test domain/core.test.ts domain/schema.test.ts domain/commands.test.ts domain/now-engine.test.ts domain/execution.test.ts domain/phase2.test.ts domain/phase245.test.ts domain/actual-deletion.test.ts domain/carryover.test.ts domain/attention.test.ts domain/phase-a.test.ts domain/phase25.test.ts tests/ui/diary-time.test.ts",
+    "test": "node --experimental-strip-types --test domain/core.test.ts domain/schema.test.ts domain/commands.test.ts domain/now-engine.test.ts domain/execution.test.ts domain/phase2.test.ts domain/phase245.test.ts domain/actual-deletion.test.ts domain/carryover.test.ts domain/attention.test.ts domain/phase-a.test.ts domain/money.test.ts domain/phase25.test.ts tests/ui/diary-time.test.ts",
     "test:phase25": "node --experimental-strip-types --test domain/actual-deletion.test.ts domain/carryover.test.ts domain/phase25.test.ts",
     "test:rules": "node scripts/run-firestore-rules-tests.mjs",
     "firebase:deploy:rules": "firebase deploy --only firestore:rules --project test-b1f84",

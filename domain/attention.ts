@@ -10,6 +10,7 @@ import {
   type SettingsData,
   type SleepRecordData,
   type TaskData,
+  type TransactionData,
 } from "./core.ts";
 import { directionPoliciesFromSettings, getDirectionActualSummary } from "./directions.ts";
 import { localDateKey } from "./wake.ts";
@@ -99,6 +100,10 @@ export function deriveAttentionCandidates(entities: CoreEntity[], now = new Date
     if (!Number.isFinite(deadline) || deadline > now.getTime() + leadDays * 86400000) continue;
     candidates.push({ key: `taskDeadline:${task.id}`, kind: "taskDeadline", targetType: "task", targetId: task.id, targetDate: localDateKey(new Date(deadline)),
       title: "Taskの期限を確認", message: `「${task.payload.title}」の期限が近づいています。`, stateKey: `${task.payload.deadline}:${leadDays}`, metadata: { leadDays } });
+  }
+  for (const transaction of active<TransactionData>(entities, "transaction").filter(item => item.payload.status === "expected" && item.payload.expectedAt && Date.parse(item.payload.expectedAt) < now.getTime())) {
+    candidates.push({ key: `expectedMoneyOverdue:${transaction.id}`, kind: "expectedMoneyOverdue", targetType: "transaction", targetId: transaction.id, targetDate: localDateKey(new Date(transaction.payload.expectedAt!)),
+      title: "入出金予定を確認", message: `「${transaction.payload.title}」の予定日を過ぎています。`, stateKey: `${transaction.revision}:${transaction.payload.expectedAt}`, metadata: { amount: transaction.payload.amount, direction: transaction.payload.direction } });
   }
   return candidates;
 }

@@ -104,9 +104,9 @@ export async function completeExecutionSession(uid: string, session: CoreEntity<
   entities = [...entities.filter(item => item.id !== completed.id && item.id !== actual.id && item.id !== updatedTask?.id), completed, actual, ...(updatedTask ? [updatedTask] : [])]; emit();
   return { session: completed, actual, task: updatedTask, created: !existingActual };
 }
-export async function recordWakeAndStartMorningFlow(uid: string, now: Date, sleep: CoreEntity<SleepRecordData> | undefined, flow: CoreEntity<RoutineFlowData> | undefined, running: CoreEntity<RoutineRunData> | undefined) {
+export async function recordWakeAndStartMorningFlow(uid: string, now: Date, sleep: CoreEntity<SleepRecordData> | undefined, flow: CoreEntity<RoutineFlowData> | undefined, running: CoreEntity<RoutineRunData> | undefined, source: SleepRecordData["source"] = "manual") {
   const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const savedSleep = sleep ? await updateEntity(uid, sleep, { ...sleep.payload, actualWakeAt: now.toISOString(), source: "manual" }) as CoreEntity<SleepRecordData> : await createEntity(uid, "sleepRecord", { date, plannedSleepAt: null, plannedWakeAt: null, estimatedSleepAt: null, actualWakeAt: now.toISOString(), source: "manual", confidence: 1 }) as CoreEntity<SleepRecordData>;
+  const savedSleep = sleep ? await updateEntity(uid, sleep, { ...sleep.payload, actualWakeAt: now.toISOString(), source, wakeSource: source }) as CoreEntity<SleepRecordData> : await createEntity(uid, "sleepRecord", { date, plannedSleepAt: null, plannedWakeAt: null, estimatedSleepAt: null, actualSleepAt: null, actualWakeAt: now.toISOString(), source, sleepSource: null, wakeSource: source, confidence: 1 }) as CoreEntity<SleepRecordData>;
   const existingRun = running || (flow ? entities.find(item => item.id === `routine_run_${date}_${flow.id}`) as CoreEntity<RoutineRunData> | undefined : undefined);
   const run = existingRun || (flow ? await createEntity(uid, "routineRun", startRoutineRunPayload(flow, now) as unknown as Record<string, unknown>) as CoreEntity<RoutineRunData> : null);
   return { sleep: savedSleep, run };
@@ -115,6 +115,22 @@ export async function savePlannedWake(uid: string, date: string, plannedWakeAt: 
   if (existing) return updateEntity(uid, existing, { ...existing.payload, plannedWakeAt, source: "manual", confidence: 1 }) as Promise<CoreEntity<SleepRecordData>>;
   const saved = { ...entity(`sleep_${date}`, "sleepRecord", { date, plannedSleepAt: null, plannedWakeAt, estimatedSleepAt: null, actualWakeAt: null, source: "manual", confidence: 1 }), payload: { date, plannedSleepAt: null, plannedWakeAt, estimatedSleepAt: null, actualWakeAt: null, source: "manual", confidence: 1 } } as CoreEntity<SleepRecordData>;
   entities = [...entities.filter(item => item.id !== saved.id), saved]; emit(); return saved;
+}
+export async function saveSleepObservation(uid: string, date: string, input: { actualSleepAt?: string | null; actualWakeAt?: string | null }, existing?: CoreEntity<SleepRecordData>) {
+  const payload: SleepRecordData = {
+    date,
+    plannedSleepAt: existing?.payload.plannedSleepAt || null,
+    plannedWakeAt: existing?.payload.plannedWakeAt || null,
+    estimatedSleepAt: existing?.payload.estimatedSleepAt || null,
+    actualSleepAt: input.actualSleepAt ?? existing?.payload.actualSleepAt ?? null,
+    actualWakeAt: input.actualWakeAt ?? existing?.payload.actualWakeAt ?? null,
+    source: "manual",
+    sleepSource: input.actualSleepAt ? "manual" : existing?.payload.sleepSource || null,
+    wakeSource: input.actualWakeAt ? "manual" : existing?.payload.wakeSource || null,
+    confidence: 1,
+  };
+  if (existing) return updateEntity(uid, existing, payload) as Promise<CoreEntity<SleepRecordData>>;
+  return createEntity(uid, "sleepRecord", payload as unknown as Record<string, unknown>) as Promise<CoreEntity<SleepRecordData>>;
 }
 export async function updateEntity(_uid: string, old: CoreEntity, payload: Record<string, unknown>, deleted = false) {
   guard(); const current = entities.find(item => item.id === old.id);
@@ -162,7 +178,11 @@ const persistGenerated = (mutations: ReturnType<typeof planRecurringMutations> |
 };
 export async function syncRecurringPlans(_uid: string, source: CoreEntity[], now = new Date()) { return persistGenerated(planRecurringMutations(source, now)); }
 export async function syncFutureBlocks(_uid: string, source: CoreEntity[], now = new Date()) { const settings = source.find(item => item.type === "settings")?.payload || {}; const plan = planFutureBlocks(source, now, settings); return { plan, saved: persistGenerated(plan.mutations) }; }
+export async function syncAttentions() { return []; }
 export async function syncNotificationJobs(_uid: string, jobs: NotificationJobData[]) { notificationJobs = structuredClone(jobs); return notificationJobs.length; }
+export const localDeviceId = () => "fixture-device";
+export async function saveDeviceSubscription(_uid: string, input: { deviceId: string; token: string; platform: string }) { return { ...input, enabled: true, createdAt: timestamp, updatedAt: timestamp, disabledAt: null }; }
+export async function disableStoredDeviceSubscription() { return null; }
 declare global {
   interface Window { __liflowFixture: { snapshot: () => CoreEntity[]; failNext: () => void; emptyTypes: (types: EntityType[]) => void } }
 }

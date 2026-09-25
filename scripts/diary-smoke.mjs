@@ -200,9 +200,17 @@ try {
   check("Calendar Day, Week, and Month render, with Week using unified activities");
 
   await mainTab("お金");
-  for (const heading of ["予算ペース", "予定の入出金", "見直し", "最近の記録"]) {
-    await page.getByRole("heading", { name: heading, exact: true }).waitFor();
-  }
+  await page.getByRole("tab", { name: "履歴", exact: true }).waitFor();
+  await page.locator(".money-history-table").waitFor();
+  assert.equal(await page.getByLabel("種類", { exact: true }).locator("option").count(), 4);
+  assert.ok(await page.getByLabel("カテゴリ", { exact: true }).locator("option").count() > 4);
+  assert.ok(await page.getByLabel("支払方法", { exact: true }).locator("option").count() > 3);
+  assert.equal(await page.getByLabel("状態", { exact: true }).locator("option").count(), 3);
+  await page.getByLabel("キーワード検索", { exact: true }).waitFor();
+  await page.getByRole("tab", { name: "分析", exact: true }).click();
+  await page.getByRole("heading", { name: "カテゴリ別支出", exact: true }).waitFor();
+  await page.getByRole("tab", { name: "予算", exact: true }).click();
+  await page.getByRole("heading", { name: "予算ペース", exact: true }).waitFor();
   assert.ok(await page.locator(".budget-card").count() >= 1);
   await page.locator(".budget-card").first().getByRole("button", { name: "編集", exact: true }).click();
   const budgetDialog = page.locator("dialog[open]");
@@ -225,8 +233,8 @@ try {
   assert.equal(fee?.payload.direction, "expense");
   assert.equal(fee?.payload.categoryId, "money_category_transfer_fee");
   assert.equal(transfer?.payload.feeTransactionId, fee?.id);
-  const management = page.locator(".money-management");
-  await management.locator("summary").click();
+  await page.getByRole("tab", { name: "管理", exact: true }).click();
+  const management = page.locator(".money-management-grid");
   await management.getByRole("heading", { name: "カテゴリ", exact: true }).waitFor();
   await management.getByRole("heading", { name: "支払方法", exact: true }).waitFor();
   await management.locator("section").first().getByPlaceholder("新しいカテゴリ").fill("ブラウザ確認");

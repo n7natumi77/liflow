@@ -40,3 +40,8 @@ test("missing Actual Attention expires after the Liflow day end", () => {
   assert.equal(deriveAttentionCandidates([settings, plan], new Date("2026-09-25T22:00:00+09:00")).some(item => item.kind === "actualMissing"), true);
   assert.equal(deriveAttentionCandidates([settings, plan], new Date("2026-09-25T23:30:00+09:00")).some(item => item.kind === "actualMissing"), false);
 });
+
+test("overdue expected Money uses the shared Attention system", () => {
+  const expected = entity("money", "transaction", { title: "給与", amount: 10000, direction: "income", category: "給与", occurredAt: "2026-09-20T12:00:00+09:00", expectedAt: "2026-09-24T12:00:00+09:00", status: "expected" });
+  assert.equal(deriveAttentionCandidates([settings, expected], now).some(item => item.kind === "expectedMoneyOverdue" && item.targetId === expected.id), true);
+});

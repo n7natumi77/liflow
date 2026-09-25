@@ -72,7 +72,7 @@ test("Start Assist expiry and manual restore apply to Plan and Task", () => {
   assert.equal(activeUnavailableRecords([resolved], now).length, 0);
 });
 
-test("recovery request is short-lived and budget pace includes future expected expense", () => {
+test("recovery request is short-lived and budget pace separates future expected expense", () => {
   const now = new Date("2026-09-21T10:00:00Z");
   const recovery = entity("recovery", "conditionRecord", { recordedAt: now.toISOString(), source: "manual", recoveryRequest: { requestedAt: now.toISOString(), expiresAt: "2026-09-21T10:15:00Z", resolvedAt: null } });
   assert.equal(activeRecoveryRequest([recovery], now)?.id, "recovery");
@@ -80,7 +80,8 @@ test("recovery request is short-lived and budget pace includes future expected e
   const budget = entity<BudgetData>("budget", "budget", { categoryId: "food", period: "week", amount: 1000, active: true });
   const transaction = (id: string, amount: number, status: TransactionData["status"], occurredAt: string) => entity<TransactionData>(id, "transaction", { title: id, amount, direction: "expense", category: "食費", categoryId: "food", occurredAt, expectedAt: occurredAt, status });
   const pace = budgetPace(budget, [transaction("settled", 300, "settled", "2026-09-21T03:00:00Z"), transaction("expected", 200, "expected", "2026-09-22T03:00:00Z")], now);
-  assert.equal(pace.remaining, 500);
+  assert.equal(pace.remaining, 700);
+  assert.equal(pace.projectedRemaining, 500);
   assert.equal(pace.remainingDays, 7);
   assert.equal(periodRange("week", now).start.getDay(), 1);
 });
@@ -93,4 +94,3 @@ test("Discord security separates trusted read context and mutation allowlist and
   assert.equal(mutationCommand("schedule"), false);
   assert.deepEqual(splitDiscordMessage("a\nbbbb", 3), ["a", "bbb", "b"]);
 });
-
