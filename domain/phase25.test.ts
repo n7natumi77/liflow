@@ -50,3 +50,10 @@ test("Firestore rules are repository-managed and tested in CI", () => {
   const workflow = read(".github/workflows/firestore-rules.yml");
   assert.match(workflow, /npm run test:rules/);
 });
+
+test("Cloudflare deployment invokes checked-in CLIs without Windows command shims", () => {
+  const deploy = read("scripts/deploy-cloudflare.mjs");
+  assert.match(deploy, /node_modules\/wrangler\/bin\/wrangler\.js/);
+  assert.match(deploy, /process\.execPath/);
+  assert.doesNotMatch(deploy, /npx|\.cmd/);
+});
