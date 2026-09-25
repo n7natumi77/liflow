@@ -1,6 +1,6 @@
 /* Only the isolated UI test server aliases firebase-store to this module.
    There is no Firebase import, connection, or persistence in this fixture. */
-import { inheritedDirection, type CoreEntity, type EntityType, type PlanData, type ActualData, type ConflictData, type ExecutionOutcome, type ExecutionSessionData, type RoutineFlowData, type RoutineRunData, type SleepRecordData, type TaskData } from "../../domain/core";
+import { inheritedDirection, type CoreEntity, type EntityType, type PlanData, type ActualData, type ConflictData, type ExecutionOutcome, type ExecutionSessionData, type RoutineFlowData, type RoutineRunData, type SleepRecordData, type TaskData, type TransactionData } from "../../domain/core";
 import { CURRENT_SCHEMA_VERSION, DEFAULT_DIRECTIONS, DEFAULT_MORNING_FLOW, DEFAULT_MORNING_FLOW_ID, MONEY_OTHER_CATEGORY_ID, MONEY_TRANSFER_FEE_CATEGORY_ID } from "../../domain/schema";
 import { completionPayloads, executionActualId, startRoutineRunPayload } from "../../domain/execution";
 import { planRecurringMutations, protectGeneratedPlanEdit } from "../../domain/recurrence";
@@ -139,10 +139,12 @@ export async function recordActualForPlan(uid: string, old: CoreEntity<PlanData>
 export async function recordPlanAsActual(uid: string, old: CoreEntity<PlanData>) {
   return recordActualForPlan(uid, old, { title: old.payload.title, startAt: old.payload.startAt, endAt: old.payload.endAt, type: old.payload.type });
 }
-export async function deleteActualAndUnlinkPlan(uid: string, actual: CoreEntity<ActualData>, old: CoreEntity<PlanData>) {
+export async function deleteActualAndUnlinkPlan(uid: string, actual: CoreEntity<ActualData>, old: CoreEntity<PlanData> | null, linkedTransactions: CoreEntity<TransactionData>[] = []) {
   const deletedActual = await updateEntity(uid, actual, actual.payload, true);
-  const unlinkedPlan = old.payload.actualId === actual.id ? await updateEntity(uid, old, { ...old.payload, actualId: null }) : old;
-  return { deletedActual, unlinkedPlan };
+  const unlinkedPlan = old?.payload.actualId === actual.id ? await updateEntity(uid, old, { ...old.payload, actualId: null }) as CoreEntity<PlanData> : old;
+  const unlinkedTransactions = [] as CoreEntity<TransactionData>[];
+  for (const item of linkedTransactions) unlinkedTransactions.push(await updateEntity(uid, item, { ...item.payload, actualId: null }) as CoreEntity<TransactionData>);
+  return { deletedActual, unlinkedPlan, unlinkedTransactions };
 }
 const persistGenerated = (mutations: ReturnType<typeof planRecurringMutations> | ReturnType<typeof planFutureBlocks>["mutations"]) => {
   const saved: CoreEntity<PlanData>[] = [];

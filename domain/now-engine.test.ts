@@ -71,6 +71,18 @@ test("remaining estimate respects remaining, estimate, then unknown", () => {
   assert.equal(getTaskRemainingEstimate(task("c")), null);
 });
 
+test("unfinished work from a past Plan resurfaces in Now without copying the Plan", () => {
+  const nextDay = new Date("2026-01-02T09:00:00");
+  const openTask = task("carry-task", { title: "原稿を直す" });
+  const missed = plan("missed", "14:00", "15:00", { type: "task", taskId: openTask.id });
+  const nextDayAwake = make("awake-next", "sleepRecord", { date: "2026-01-02", actualWakeAt: at("2026-01-02", "07:00"), source: "manual" });
+  const decision = getNowDecision([settings, nextDayAwake, openTask, missed], nextDay);
+  assert.equal(decision.reason, "carryover");
+  assert.equal(decision.primaryAction?.kind, "task");
+  assert.match(decision.primaryAction?.title || "", /昨日の予定で未実施/);
+  assert.equal([settings, nextDayAwake, openTask, missed].filter(item => item.type === "plan").length, 1);
+});
+
 test("deadline pressure covers critical, tight, safe, unknown and safety factor", () => {
   const entities = [
     settings,

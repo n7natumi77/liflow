@@ -1,12 +1,13 @@
 'use client';
 import {collection,doc,getDoc,getDocs,onSnapshot,query,runTransaction,setDoc,where,writeBatch,type DocumentData} from 'firebase/firestore';
 import {firestore} from './firebase-client';
-import {inheritedDirection,shiftedPlan,validTimeRange,type ActualData,type ConflictData,type CoreEntity,type EntityType,type ExecutionOutcome,type ExecutionSessionData,type PlanData,type RoutineFlowData,type RoutineRunData,type SleepRecordData,type TaskData} from '../domain/core';
+import {inheritedDirection,shiftedPlan,validTimeRange,type ActualData,type ConflictData,type CoreEntity,type EntityType,type ExecutionOutcome,type ExecutionSessionData,type PlanData,type RoutineFlowData,type RoutineRunData,type SleepRecordData,type TaskData,type TransactionData} from '../domain/core';
 import {CURRENT_SCHEMA_VERSION,assertMigrationCandidate,countEntities,createSnapshotMigrationPlan,migrateEntity,migrateSnapshot,type StoredEntity} from '../domain/schema';
 import {deriveExecutionRuntimeState,executionActualId,startRoutineRunPayload} from '../domain/execution';
 import {planRecurringMutations,protectGeneratedPlanEdit} from '../domain/recurrence';
 import {planFutureBlocks} from '../domain/future-blocks';
 import {deviceSubscriptionPayload,disableDeviceSubscription,notificationJobId,type DeviceSubscriptionData,type NotificationJobData} from '../domain/notifications';
+import {prepareActualDeletion} from '../domain/actual-deletion';
 
 export type SyncState='接続中'|'同期済み'|'オフライン'|'同期エラー';
 export const localDeviceId=()=>{let id=localStorage.getItem('liflow_device_id_v1');if(!id){id=`device_${crypto.randomUUID()}`;localStorage.setItem('liflow_device_id_v1',id)}return id};
@@ -158,15 +159,15 @@ export async function recordActualForPlan(uid:string,plan:CoreEntity<PlanData>,p
  });
 }
 
-export async function deleteActualAndUnlinkPlan(uid:string,actual:CoreEntity<ActualData>,plan:CoreEntity<PlanData>){
- const actualRef=doc(firestore,'users',uid,'entities',actual.id),planRef=doc(firestore,'users',uid,'entities',plan.id),now=new Date().toISOString(),by=deviceId();
+export async function deleteActualAndUnlinkPlan(uid:string,actual:CoreEntity<ActualData>,plan:CoreEntity<PlanData>|null,linkedTransactions:CoreEntity<TransactionData>[]=[]){
+ const actualRef=doc(firestore,'users',uid,'entities',actual.id),planRef=plan?doc(firestore,'users',uid,'entities',plan.id):null,transactionRefs=linkedTransactions.map(item=>doc(firestore,'users',uid,'entities',item.id)),now=new Date().toISOString(),by=deviceId();
  return runTransaction(firestore,async transaction=>{
-  const [actualSnapshot,planSnapshot]=await Promise.all([transaction.get(actualRef),transaction.get(planRef)]),remoteActual=actualSnapshot.exists()?migrateEntity(entityFromDoc(actualSnapshot.id,actualSnapshot.data())) as CoreEntity<ActualData>:actual,remotePlan=planSnapshot.exists()?migrateEntity(entityFromDoc(planSnapshot.id,planSnapshot.data())) as CoreEntity<PlanData>:plan;
-  const unlinkLegacyPointer=remotePlan.payload.actualId===actual.id;
-  if(remoteActual.revision!==actual.revision||(unlinkLegacyPointer&&remotePlan.revision!==plan.revision))throw new Error('revision_conflict');
-  const deletedActual:CoreEntity<ActualData>={...remoteActual,revision:remoteActual.revision+1,updatedAt:now,updatedBy:by,deletedAt:now};
-  const unlinkedPlan:CoreEntity<PlanData>=unlinkLegacyPointer?{...remotePlan,payload:{...remotePlan.payload,actualId:null},revision:remotePlan.revision+1,updatedAt:now,updatedBy:by}:remotePlan;
-  transaction.set(actualRef,deletedActual);if(unlinkLegacyPointer)transaction.set(planRef,unlinkedPlan);return {deletedActual,unlinkedPlan};
+  const [actualSnapshot,planSnapshot,...moneySnapshots]=await Promise.all([transaction.get(actualRef),planRef?transaction.get(planRef):Promise.resolve(null),...transactionRefs.map(ref=>transaction.get(ref))]),remoteActual=actualSnapshot.exists()?migrateEntity(entityFromDoc(actualSnapshot.id,actualSnapshot.data())) as CoreEntity<ActualData>:actual,remotePlan=planSnapshot?.exists()?migrateEntity(entityFromDoc(planSnapshot.id,planSnapshot.data())) as CoreEntity<PlanData>:plan;
+  const unlinkLegacyPointer=Boolean(remotePlan?.payload.actualId===actual.id);
+  if(remoteActual.revision!==actual.revision||(unlinkLegacyPointer&&remotePlan?.revision!==plan?.revision))throw new Error('revision_conflict');
+  const remoteTransactions=moneySnapshots.map((snapshot,index)=>{const local=linkedTransactions[index];const remote=snapshot.exists()?migrateEntity(entityFromDoc(snapshot.id,snapshot.data())) as CoreEntity<TransactionData>:local;if(remote.revision!==local.revision)throw new Error('revision_conflict');return remote});
+  const {deletedActual,unlinkedPlan,unlinkedTransactions}=prepareActualDeletion(remoteActual,unlinkLegacyPointer?remotePlan:plan,remoteTransactions,now,by);
+  transaction.set(actualRef,deletedActual);if(unlinkLegacyPointer&&planRef&&unlinkedPlan)transaction.set(planRef,unlinkedPlan);unlinkedTransactions.forEach((item,index)=>transaction.set(transactionRefs[index],item));return {deletedActual,unlinkedPlan,unlinkedTransactions};
  });
 }
 

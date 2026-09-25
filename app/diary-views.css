@@ -72,3 +72,5 @@
 .day-routine{min-height:26px;padding:3px;font-size:10px;line-height:1.15}.day-routine b{font-size:10px;line-height:1.15;margin-top:1px}
 
 .day-fairy-reaction{mix-blend-mode:multiply}
+.calendar-activity .actual-edit-link{position:absolute;right:4px;bottom:3px;z-index:6;border:1px solid color-mix(in srgb,var(--blue) 65%,var(--line));border-radius:999px;background:var(--paper);color:var(--ink);padding:2px 6px;font-size:9px}
+.diagnostics-panel dl{display:grid;gap:6px}.diagnostics-panel dl>div{display:flex;justify-content:space-between;gap:12px}.diagnostics-panel dd{font-family:var(--font-data);text-align:right}.diagnostic-config{display:flex;flex-wrap:wrap;gap:6px}.diagnostic-config span{border:1px solid var(--line);border-radius:999px;padding:4px 8px;font-size:10px}.diagnostic-config .configured{color:#39745c}.diagnostic-config .missing{color:#9a5d68}

@@ -6,6 +6,7 @@ import { completedTaskActionPayload, currentTaskAction, nextTaskActionOrder, tas
 import { dateKey, freeRanges, minuteLabel } from "./diary-time";
 import type { CaptureState } from "./diary-types";
 import { ActionFeedback, DiaryEmpty, SectionDialog, SectionHeading, useDiaryAction, type UpdateEntity } from "./diary-section";
+import { deriveCarryoverWork } from "../domain/carryover";
 
 type Props = {
   entities: CoreEntity[];
@@ -22,16 +23,22 @@ export function TasksView({ entities, tasks, plans, categories, setModal, create
   const [selected, setSelected] = useState<CoreEntity<TaskData> | null>(null), [newAction, setNewAction] = useState(""), [expanded, setExpanded] = useState<string[]>([]);
   const [finalNotice, setFinalNotice] = useState("");
   const action = useDiaryAction();
-  const linked = (id: string) => plans.filter(plan => plan.payload.taskId === id && !plan.payload.resolution);
+  const now = new Date();
+  const carryovers = deriveCarryoverWork(entities, now);
+  const carryoverByTask = new Map(carryovers.map(item => [item.task.id, item]));
+  const carryoverIds = new Set(carryovers.map(item => item.task.id));
+  const linked = (id: string) => plans.filter(plan => plan.payload.taskId === id && !plan.payload.resolution && Date.parse(plan.payload.endAt) >= now.getTime());
   const open = tasks.filter(task => ["open", "inbox"].includes(task.payload.status));
-  const organize = open.filter(task => isSoon(task) || !currentTaskAction(entities, task.id) || task.payload.estimatedRemainingMinutes === null);
+  const carryoverTasks = open.filter(task => carryoverIds.has(task.id));
+  const organize = open.filter(task => !carryoverIds.has(task.id) && (isSoon(task) || !currentTaskAction(entities, task.id) || task.payload.estimatedRemainingMinutes === null));
   const organizeIds = new Set(organize.map(task => task.id));
-  const needs = open.filter(task => !organizeIds.has(task.id) && (!task.payload.calendarCategoryId || !currentTaskAction(entities, task.id)));
-  const scheduled = open.filter(task => !organizeIds.has(task.id) && linked(task.id).length);
+  const needs = open.filter(task => !carryoverIds.has(task.id) && !organizeIds.has(task.id) && (!task.payload.calendarCategoryId || !currentTaskAction(entities, task.id)));
+  const scheduled = open.filter(task => !carryoverIds.has(task.id) && !organizeIds.has(task.id) && linked(task.id).length);
   const scheduledIds = new Set(scheduled.map(task => task.id));
-  const later = open.filter(task => !organizeIds.has(task.id) && !scheduledIds.has(task.id) && !needs.includes(task));
+  const later = open.filter(task => !carryoverIds.has(task.id) && !organizeIds.has(task.id) && !scheduledIds.has(task.id) && !needs.includes(task));
   const completed = tasks.filter(task => task.payload.status === "completed");
   const sections = [
+    { id: "carryover", title: "未実施だった作業", hint: "過去の予定から再表示", items: carryoverTasks },
     { id: "organize", title: "いま整える", hint: "次の一手や締切を確認", items: organize },
     { id: "needs", title: "整理が必要", hint: "分類やActionが不足", items: needs },
     { id: "later", title: "あとで", hint: "急がず保留できるもの", items: later },
@@ -67,7 +74,7 @@ export function TasksView({ entities, tasks, plans, categories, setModal, create
           const current = currentTaskAction(entities, task.id), category = categories.find(item => item.id === task.payload.calendarCategoryId);
           return <button className={"task-state-card" + (task.payload.status === "completed" ? " is-complete" : "")} key={task.id} onClick={() => { setSelected(task); setFinalNotice(""); }}
             style={{ "--entry-color": category?.payload.colorToken || "var(--line)" } as CSSProperties}>
-            <b>{task.payload.title}</b><span>{task.payload.deadline ? new Date(task.payload.deadline).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" }) + "まで" : "期限なし"}{linked(task.id).length ? " · 予定" + linked(task.id).length + "件" : ""}</span>
+            <b>{task.payload.title}</b><span>{carryoverByTask.get(task.id)?.label || (task.payload.deadline ? new Date(task.payload.deadline).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" }) + "まで" : "期限なし")}{linked(task.id).length ? " · 予定" + linked(task.id).length + "件" : ""}</span>
             <strong>{current ? "いま：" + current.payload.title : task.payload.status === "completed" ? "完了" : "次のActionを決める"}</strong>
           </button>;
         })}</div>

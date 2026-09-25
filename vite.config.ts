@@ -1,13 +1,13 @@
 import vinext from "vinext";
 import { defineConfig } from "vite";
-import hostingConfig from "./.openai/hosting.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { sites } from "./build/sites-vite-plugin";
 
-const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
-  "00000000-0000-4000-8000-000000000000";
-
-const { d1, r2 } = hostingConfig;
+const d1Binding = process.env.CLOUDFLARE_D1_BINDING?.trim();
+const d1DatabaseId = process.env.CLOUDFLARE_D1_DATABASE_ID?.trim();
+const d1DatabaseName = process.env.CLOUDFLARE_D1_DATABASE_NAME?.trim();
+const r2Binding = process.env.CLOUDFLARE_R2_BINDING?.trim();
+const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME?.trim();
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
@@ -16,20 +16,20 @@ const managedLinux = readExecutionProfile() === "managed-linux";
 const localBindingConfig = {
   main: "vinext/server/fetch-handler",
   compatibility_flags: ["nodejs_compat"],
-  d1_databases: d1
+  d1_databases: d1Binding && d1DatabaseId && d1DatabaseName
     ? [
         {
-          binding: d1,
-          database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          binding: d1Binding,
+          database_name: d1DatabaseName,
+          database_id: d1DatabaseId,
         },
       ]
     : [],
-  r2_buckets: r2
+  r2_buckets: r2Binding && r2BucketName
     ? [
         {
-          binding: r2,
-          bucket_name: "site-creator-r2",
+          binding: r2Binding,
+          bucket_name: r2BucketName,
         },
       ]
     : [],

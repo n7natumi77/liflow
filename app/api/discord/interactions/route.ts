@@ -1,19 +1,25 @@
-import { NextResponse } from "next/server";
-import { applicationDefault, cert, getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { after, NextResponse } from "next/server";
 import { executeCommand, executeCommandBatch, parseCommandBatch, parseDiscordCommand } from "../../../../domain/commands";
 import { allowedDiscordMutation, mutationCommand, optionRecord, splitDiscordMessage, trustedDiscordContext, verifyDiscordSignature, type DiscordInteraction } from "../../../../domain/discord-interactions";
 import { CURRENT_SCHEMA_VERSION } from "../../../../domain/schema";
 import type { CoreEntity, EntityType, PlanData, TaskData, TransactionData } from "../../../../domain/core";
+import { createUserEntity, listUserEntities, serviceAccountEnvironment } from "../../../../workers/firestore-entities";
 
-export const runtime = "nodejs";
-const response = (content: string, status = 200) => NextResponse.json({ type: 4, data: { content: splitDiscordMessage(content)[0], allowed_mentions: { parse: [] } } }, { status });
-const required = (name: string) => process.env[name]?.trim() || "";
-const initialize = () => {
-  if (getApps().length) return;
-  const raw = required("FIREBASE_SERVICE_ACCOUNT_JSON");
-  initializeApp({ credential: raw ? cert(JSON.parse(raw)) : applicationDefault() });
+export const runtime = "edge";
+const response = (content: string, status = 200, interaction?: DiscordInteraction) => {
+  const chunks = splitDiscordMessage(content);
+  if (chunks.length > 1 && interaction?.application_id && interaction.token) {
+    after(async () => {
+      for (const chunk of chunks.slice(1)) {
+        await fetch(`https://discord.com/api/v10/webhooks/${interaction.application_id}/${interaction.token}`, {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ content: chunk, allowed_mentions: { parse: [] } }),
+        });
+      }
+    });
+  }
+  return NextResponse.json({ type: 4, data: { content: chunks[0], allowed_mentions: { parse: [] } } }, { status });
 };
+const required = (name: string) => process.env[name]?.trim() || "";
 const dateKey = (date: Date) => date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
 const iso = (date: string, time: string) => new Date(date + "T" + time + ":00").toISOString();
 
@@ -29,16 +35,15 @@ export async function POST(request: Request) {
   const name = interaction.data.name, options = optionRecord(interaction);
   if (mutationCommand(name) && !allowedDiscordMutation(interaction, allowed)) return response("このDiscordアカウントはLiflowの更新を許可されていません。", 403);
   try {
-    initialize();
+    const firebaseEnv = serviceAccountEnvironment(required("FIREBASE_SERVICE_ACCOUNT_JSON"));
     const uid = required("LIFLOW_FIREBASE_UID");
     if (!uid) throw new Error("LIFLOW_FIREBASE_UID is required");
-    const collection = getFirestore().collection("users").doc(uid).collection("entities");
-    const snapshot = await collection.get();
-    const entities = snapshot.docs.map(document => document.data() as CoreEntity);
+    const listed = await listUserEntities(firebaseEnv, uid);
+    const entities = listed.entities as CoreEntity[];
     const rawCreate = async (type: EntityType, payload: Record<string, unknown>) => {
-      const ref = collection.doc(), now = new Date().toISOString();
-      const entity: CoreEntity = { id: ref.id, type, payload, schemaVersion: CURRENT_SCHEMA_VERSION, revision: 1, createdAt: now, updatedAt: now, updatedBy: "discord:" + (interaction.member?.user?.id || interaction.user?.id || "unknown"), deletedAt: null };
-      await ref.set(entity); return entity;
+      const id = crypto.randomUUID(), now = new Date().toISOString();
+      const entity: CoreEntity = { id, type, payload, schemaVersion: CURRENT_SCHEMA_VERSION, revision: 1, createdAt: now, updatedAt: now, updatedBy: "discord:" + (interaction.member?.user?.id || interaction.user?.id || "unknown"), deletedAt: null };
+      await createUserEntity(firebaseEnv, uid, id, entity as unknown as Record<string, unknown>, listed.token); return entity;
     };
     const create = async (type: EntityType, payload: Record<string, unknown>) => {
       const next = { ...payload };
@@ -54,7 +59,7 @@ export async function POST(request: Request) {
       const now = new Date(), range = String(options.range || "today"), end = new Date(now);
       if (range === "6h") end.setHours(end.getHours() + 6); else if (range === "3d") end.setDate(end.getDate() + 3); else end.setHours(23, 59, 59, 999);
       const plans = entities.filter(item => item.type === "plan" && !item.deletedAt).map(item => item as CoreEntity<PlanData>).filter(item => !item.payload.resolution && Date.parse(item.payload.endAt) > now.getTime() && Date.parse(item.payload.startAt) < end.getTime()).sort((a, b) => a.payload.startAt.localeCompare(b.payload.startAt));
-      return response(plans.length ? plans.map(plan => new Date(plan.payload.startAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " " + plan.payload.title).join("\n") : "この範囲の予定はありません。");
+      return response(plans.length ? plans.map(plan => new Date(plan.payload.startAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " " + plan.payload.title).join("\n") : "この範囲の予定はありません。", 200, interaction);
     }
     if (name === "tasks") {
       const tasks = entities.filter(item => item.type === "task" && !item.deletedAt).map(item => item as CoreEntity<TaskData>).filter(item => item.payload.status === "open").slice(0, 30);

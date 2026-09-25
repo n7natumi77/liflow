@@ -174,6 +174,17 @@ try {
   assert.notEqual(await calendarSelect.inputValue(), "");
   assert.equal(await calendarSelect.locator('option[value=""]').count(), 0);
   await planDialog.getByRole("button", { name: "閉じる" }).click();
+  await lectureActivity.getByRole("button", { name: "物理学の授業の実績を編集" }).click();
+  const actualDialog = page.locator("dialog[open]");
+  await actualDialog.getByRole("heading", { name: "編集する", exact: true }).waitFor();
+  await actualDialog.getByLabel("終了", { exact: true }).fill("10:20");
+  await actualDialog.getByRole("button", { name: "保存する", exact: true }).click();
+  await waitFor(async () => new Date((await snapshot()).find(item => item.id === "actual1")?.payload.endAt).getMinutes() === 20);
+  await lectureActivity.getByRole("button", { name: "物理学の授業の実績を編集" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: "削除する", exact: true }).click();
+  await waitFor(async () => Boolean((await snapshot()).find(item => item.id === "actual1")?.deletedAt));
+  assert.equal((await snapshot()).find(item => item.id === "lecture")?.deletedAt, null);
+  check("Actual can be edited and tombstoned from Calendar without deleting its Plan");
   await screenshot("desktop-calendar");
   check("Calendar renders linked Plan and Actual as one activity and requires a category");
 

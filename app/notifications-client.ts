@@ -1,5 +1,5 @@
 "use client";
-import { deleteToken, getMessaging, getToken, isSupported } from "firebase/messaging";
+import { deleteToken, getMessaging, getToken, isSupported, onMessage, type MessagePayload } from "firebase/messaging";
 import { firebaseApp } from "./firebase-client";
 import {
   disableStoredDeviceSubscription,
@@ -9,9 +9,43 @@ import {
 
 const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || "";
 
-export async function registerPwaServiceWorker() {
+export async function registerPwaServiceWorker(onUpdate?: (registration: ServiceWorkerRegistration) => void) {
   if (!("serviceWorker" in navigator)) return null;
-  return navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
+  const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
+  if (registration.waiting) onUpdate?.(registration);
+  registration.addEventListener("updatefound", () => {
+    const worker = registration.installing;
+    worker?.addEventListener("statechange", () => {
+      if (worker.state === "installed" && navigator.serviceWorker.controller) onUpdate?.(registration);
+    });
+  });
+  return registration;
+}
+
+export async function pwaDiagnostics() {
+  if (!("serviceWorker" in navigator)) return { supported: false, controlled: false, version: "-", updateReady: false };
+  const registration = await navigator.serviceWorker.getRegistration("/");
+  let version = "unknown";
+  const worker = registration?.active || registration?.waiting || registration?.installing;
+  if (worker) {
+    version = await new Promise<string>(resolve => {
+      const channel = new MessageChannel();
+      const timer = window.setTimeout(() => resolve("unknown"), 1200);
+      channel.port1.onmessage = event => { window.clearTimeout(timer); resolve(String(event.data?.version || "unknown")); };
+      worker.postMessage({ type: "GET_VERSION" }, [channel.port2]);
+    });
+  }
+  return { supported: true, controlled: Boolean(navigator.serviceWorker.controller), version, updateReady: Boolean(registration?.waiting) };
+}
+
+export async function applyPwaUpdate() {
+  const registration = await navigator.serviceWorker.getRegistration("/");
+  registration?.waiting?.postMessage({ type: "SKIP_WAITING" });
+}
+
+export async function listenForForegroundNotifications(onPayload: (payload: MessagePayload) => void) {
+  if (!(await isSupported())) return () => undefined;
+  return onMessage(getMessaging(firebaseApp), onPayload);
 }
 
 export function notificationCapability() {

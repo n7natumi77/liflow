@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   icons: {
     icon: [{ url: "/favicon.svg" }, { url: "/icons/liflow-app.svg", type: "image/svg+xml" }],
     shortcut: "/favicon.svg",
-    apple: "/icons/liflow-app.svg",
+    apple: "/icons/liflow-app-192.png",
   },
 };
 

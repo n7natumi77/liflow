@@ -10,6 +10,7 @@ import { directionPoliciesFromSettings, getDirectionNeeds } from "./directions.t
 import { getWakeWindow } from "./wake.ts";
 import { activeRecoveryRequest } from "./start-assist.ts";
 import { currentTaskAction } from "./task-actions.ts";
+import { deriveCarryoverWork } from "./carryover.ts";
 import {
   getCurrentFixedPlan,
   getDepartureAnchor,
@@ -35,6 +36,7 @@ export type NowReason =
   | "current_fixed_plan"
   | "critical_deadline"
   | "tight_deadline"
+  | "carryover"
   | "direction_need"
   | "continuation"
   | "recovery"
@@ -257,6 +259,17 @@ export function getNowDecision(
       primaryAction: taskAction(entities, tight, window.usableMinutes, options.assistReason),
       reason: "tight_deadline",
       reasonDetails: reservations.find((item) => item.taskId === tight.id),
+    };
+  }
+  const carryover = deriveCarryoverWork(entities, now).find(item => tasks.some(task => task.id === item.task.id));
+  if (carryover) {
+    const action = taskAction(entities, carryover.task, window.usableMinutes, options.assistReason);
+    return {
+      ...base,
+      mode: "focus",
+      primaryAction: { ...action, sourcePlanId: carryover.plan.id, title: `${carryover.label} · ${action.title}` },
+      reason: "carryover",
+      reasonDetails: { sourcePlanId: carryover.plan.id, daysAgo: carryover.daysAgo },
     };
   }
   for (const need of getDirectionNeeds(entities, now, directionPoliciesFromSettings(settings))) {

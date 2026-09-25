@@ -70,6 +70,7 @@ export default function DayCalendar({ date, plans, capacityPlans, actuals, sessi
                 <time>{minuteLabel(startMinute)}–{minuteLabel(endMinute)}</time><b>{activity.title}</b>
                 {!compact && <small>{activity.segments.some(segment => segment.running) ? "実行中" : activity.actuals.length ? `実績 ${activity.actuals.length}件` : state === "unresolved" ? "未整理" : state}</small>}
               </button>
+              {activity.plan && activity.actuals.length > 0 && <button className="actual-edit-link" onClick={() => openEntity(activity.actuals[0])} aria-label={`${activity.title}の実績を編集`}>実績{activity.actuals.length > 1 ? ` ${activity.actuals.length}件` : ""}</button>}
             </article>;
           })}
         </div>

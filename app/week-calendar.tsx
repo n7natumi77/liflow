@@ -74,7 +74,7 @@ function WeekBlock({ placement, day, color, openEntity }: { placement: PlacedWee
   const { item: activity, column, columns, compact, displayTop, anchorOffset, renderedHeight, hitHeight, startMinute, endMinute } = placement;
   const range = dayRange(activity.startAt, activity.endAt, day)!;
   const planRange = activity.plan ? dayRange(activity.plan.payload.startAt, activity.plan.payload.endAt, day) : null;
-  const target = activity.plan || activity.actuals[0];
+  const target = activity.actuals[0] || activity.plan;
   const state = activity.plan ? planState(activity.plan, activity.actuals) : "executed";
   const width = 100 / columns, left = column * width;
   return <button className={`week-event calendar-activity state-${state} ${compact ? "calendar-compact" : "calendar-block"}`} style={{ top: displayTop, height: compact ? hitHeight : renderedHeight, left: `calc(${left}% + 1px)`, width: `calc(${width}% - 2px)`, "--entry-color": color, "--category-color": color, "--anchor-offset": `${anchorOffset}px`, "--duration-height": `${renderedHeight}px` } as CSSProperties}

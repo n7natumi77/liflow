@@ -32,6 +32,7 @@ import {
   type ExecutionOutcome,
   type SleepRecordData,
   type EntityType,
+  type TransactionData,
 } from "../domain/core";
 import CalendarView from "./calendar-view";
 import { TasksView } from "./tasks-view";
@@ -72,8 +73,10 @@ import { sendToDiscord } from "./discord-client";
 import { createExecutionSessionPayload } from "../domain/execution";
 import { buildNotificationJobs } from "../domain/notifications";
 import { currentTaskAction } from "../domain/task-actions";
-import { createApplicationEntity, updateApplicationEntity } from "../domain/application-actions";
+import { createApplicationEntity, deleteActualApplicationEntity, updateApplicationEntity } from "../domain/application-actions";
 import { disablePushNotifications, enablePushNotifications, notificationCapability, refreshPushSubscription, registerPwaServiceWorker } from "./notifications-client";
+import { listenForForegroundNotifications } from "./notifications-client";
+import { DiagnosticsPanel } from "./diagnostics-panel";
 
 const nav = [
   ["now", "今", Home],
@@ -112,6 +115,9 @@ function LiflowApp({
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [syncState, setSyncState] = useState<SyncState>("接続中");
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [foregroundNotice, setForegroundNotice] = useState("");
+  const [pwaUpdateReady, setPwaUpdateReady] = useState(false);
   const [modal, setModal] = useState<Modal>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [clock, setClock] = useState(new Date());
@@ -129,6 +135,7 @@ function LiflowApp({
             (next) => {
               setEntities(next);
               setLoaded(true);
+              setLastSyncedAt(new Date().toISOString());
             },
             setSyncState,
             (message) => {
@@ -155,7 +162,12 @@ function LiflowApp({
     };
   }, [userId]);
   useEffect(() => {
-    void registerPwaServiceWorker().catch(() => undefined);
+    let unsubscribe: () => void = () => undefined;
+    void registerPwaServiceWorker(() => setPwaUpdateReady(true)).catch(() => undefined);
+    void listenForForegroundNotifications(payload => {
+      setForegroundNotice(payload.notification?.title || payload.notification?.body || "Liflowから通知が届きました。");
+    }).then(stop => { unsubscribe = stop; }).catch(() => undefined);
+    return () => unsubscribe();
   }, []);
   useEffect(() => {
     if (!loaded) return;
@@ -356,18 +368,21 @@ function LiflowApp({
   const remove = async (entity: CoreEntity) => {
     if (entity.type === "actual") {
       const actual = entity as CoreEntity<ActualData>,
-        linkedPlan = plans.find((p) => p.id === actual.payload.planId);
-      if (linkedPlan) {
+        linkedPlan = plans.find((p) => p.id === actual.payload.planId) || null,
+        linkedTransactions = active<TransactionData>(entities, "transaction").filter(item => item.payload.actualId === actual.id);
+      if (linkedTransactions.length && !window.confirm(`この実績にはお金の記録が${linkedTransactions.length}件紐づいています。お金の記録は残し、実績とのリンクだけ外して削除しますか？`)) return;
+      {
         try {
-          const result = await deleteActualAndUnlinkPlan(
-            userId,
+          const result = await deleteActualApplicationEntity({ deleteActual: (target, plan, transactions) => deleteActualAndUnlinkPlan(userId, target, plan, transactions) },
             actual,
             linkedPlan,
+            linkedTransactions,
           );
           setEntities((v) => [
-            ...v.filter((e) => e.id !== actual.id && e.id !== linkedPlan.id),
+            ...v.filter((e) => e.id !== actual.id && e.id !== linkedPlan?.id && !linkedTransactions.some(item => item.id === e.id)),
             result.deletedActual,
-            result.unlinkedPlan,
+            ...(result.unlinkedPlan ? [result.unlinkedPlan] : []),
+            ...result.unlinkedTransactions,
           ]);
           setError("");
           return;
@@ -430,6 +445,7 @@ function LiflowApp({
   return (
     <div className="shell" data-active-tab={tab}>
       <DiaryNavigation tab={tab} setTab={setTab} checks={checks.length} userName={userName} syncState={syncState} onSignOut={onSignOut} />
+      {(foregroundNotice || pwaUpdateReady) && <div className="notification-entry" role="status">{foregroundNotice || "Liflowの更新を利用できます。設定の診断から適用してください。"}</div>}
       <main id="main-content" className="diary-main">
         <span className="diary-corner corner-left" aria-hidden="true" />
         <span className="diary-corner corner-right" aria-hidden="true" />
@@ -543,6 +559,8 @@ function LiflowApp({
                  userId={userId}
                  entities={entities}
                  settings={settings}
+                syncState={syncState}
+                lastSyncedAt={lastSyncedAt}
                 conflicts={conflicts}
                 nowPlan={nowPlan}
                 nextPlan={nextPlan}
@@ -718,6 +736,8 @@ export function SettingsView({
   userId,
   entities,
   settings,
+  syncState,
+  lastSyncedAt,
   conflicts,
   nowPlan,
   nextPlan,
@@ -729,6 +749,8 @@ export function SettingsView({
   userId: string;
   entities: CoreEntity[];
   settings?: CoreEntity<SettingsData>;
+  syncState: SyncState;
+  lastSyncedAt: string | null;
   conflicts: CoreEntity<ConflictData>[];
   nowPlan?: CoreEntity<PlanData>;
   nextPlan?: CoreEntity<PlanData>;
@@ -1089,6 +1111,7 @@ export function SettingsView({
           {busy ? "送信中…" : "現在の状況をテスト送信"}
         </button>
       </section>
+      <DiagnosticsPanel syncState={syncState} lastSyncedAt={lastSyncedAt} />
     </div>
   );
 }
