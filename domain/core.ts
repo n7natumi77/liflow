@@ -23,6 +23,8 @@ export const ENTITY_TYPES = [
   "project",
   "settings",
   "conflict",
+  "attention",
+  "notificationRule",
 ] as const;
 
 export type EntityType = (typeof ENTITY_TYPES)[number];
@@ -64,6 +66,8 @@ export type TaskData = {
   calendarCategoryId?: string | null;
   status: "inbox" | "open" | "completed" | "cancelled";
   completedAt?: string | null;
+  /** Number of days before the deadline that Attention starts. null disables it. */
+  attentionLeadDays?: number | null;
 };
 
 export type TaskActionData = {
@@ -219,14 +223,17 @@ export type RoutineRunData = {
   }[];
 };
 
-export type ObservationSource = "manual" | "notification" | "screenTime" | "health";
+export type ObservationSource = "manual" | "notification" | "notification-action" | "estimated" | "device" | "screenTime" | "health";
 export type SleepRecordData = {
   date: string;
   plannedSleepAt?: string | null;
   plannedWakeAt?: string | null;
   estimatedSleepAt?: string | null;
+  actualSleepAt?: string | null;
   actualWakeAt?: string | null;
   source: ObservationSource;
+  sleepSource?: ObservationSource | null;
+  wakeSource?: ObservationSource | null;
   confidence?: number | null;
 };
 export type ConditionRecordData = {
@@ -340,6 +347,16 @@ export type SettingsData = {
   departureNotifications?: boolean;
   executionNotifications?: boolean;
   windDownNotifications?: boolean;
+  directionStaleDays?: number;
+  planNotificationOffsets?: number[];
+  taskNotificationOffsets?: number[];
+  routineCheckTime?: string;
+  routineRepeatIntervalMinutes?: number;
+  routineMaxRepeats?: number;
+  morningSummaryEnabled?: boolean;
+  morningSummaryTime?: string;
+  eveningSummaryEnabled?: boolean;
+  eveningSummaryTime?: string;
   directionPolicies?: Record<
     string,
     {
@@ -348,6 +365,33 @@ export type SettingsData = {
       targetMinutes?: number;
     }
   >;
+};
+export type AttentionKind = "directionStale" | "actualMissing" | "planningGap" | "taskDeadline" | "expectedMoneyOverdue";
+export type AttentionData = {
+  key: string;
+  kind: AttentionKind;
+  targetType: EntityType | "date";
+  targetId?: string | null;
+  targetDate?: string | null;
+  title: string;
+  message: string;
+  status: "open" | "ignored" | "resolved";
+  stateKey: string;
+  ignoredAt?: string | null;
+  resolvedAt?: string | null;
+  metadata?: Record<string, unknown>;
+};
+export type NotificationSourceType = "plan" | "task" | "routine";
+export type NotificationRuleData = {
+  sourceType: NotificationSourceType;
+  sourceId: string;
+  enabled: boolean;
+  triggerType: "offset" | "atTime" | "disabled";
+  offsetMinutes?: number | null;
+  targetTime?: string | null;
+  repeatEnabled?: boolean;
+  repeatIntervalMinutes?: number | null;
+  maxRepeats?: number | null;
 };
 export type ConflictData = {
   targetId: string;

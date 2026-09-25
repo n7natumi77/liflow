@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ArrowRight, CalendarDays, Check, Clock3, Gem, Inbox, ListTodo, Play, Plus, Sparkles, Undo2 } from "lucide-react";
+import { ArrowRight, BellRing, CalendarDays, Check, Clock3, Gem, Inbox, ListTodo, Play, Plus, ShieldAlert, Sparkles, Undo2 } from "lucide-react";
 import { active, unresolved, type ConditionRecordData, type CoreEntity, type EntityType, type ExecutionOutcome, type PlanData, type SettingsData, type TaskData } from "../domain/core";
 import { getNowDecision, type StartAssistReason } from "../domain/now-engine";
 import { activeRecoveryRequest, activeUnavailableRecords, endOfLocalDay, unavailableTargets } from "../domain/start-assist";
@@ -25,9 +25,11 @@ type Props = {
   endExecution: (sessionId: string, outcome: ExecutionOutcome, completeTask?: boolean) => Promise<void>;
   recordWake: () => Promise<void>;
   notificationEntry?: string;
+  attentionCount: number;
+  systemCount: number;
 };
 
-export default function NowView({ entities, create, update, clock, plans, tasks, inboxCount, checks, setTab, setModal, beginExecution, endExecution, recordWake, notificationEntry }: Props) {
+export default function NowView({ entities, create, update, clock, plans, tasks, inboxCount, checks, setTab, setModal, beginExecution, endExecution, recordWake, notificationEntry, attentionCount, systemCount }: Props) {
   const [busy, setBusy] = useState<string | null>(null), [notice, setNotice] = useState(""), [celebrating, setCelebrating] = useState(false);
   const [assistOpen, setAssistOpen] = useState(false), [assistPanel, setAssistPanel] = useState<"friction" | "unavailable" | "occupied" | null>(null);
   const [assistReason, setAssistReason] = useState<StartAssistReason | null>(null), [skippedTaskIds, setSkippedTaskIds] = useState<string[]>([]);
@@ -100,6 +102,7 @@ export default function NowView({ entities, create, update, clock, plans, tasks,
       </div>
       <div className="fairy-companion compact"><div className="fairy-bubble">{decision.reason === "recovery" ? "まず短く休もう。責めなくて大丈夫。" : action ? "今は「" + action.title + "」だけ見よう。" : "空けておいても大丈夫。"}</div><FairyCharacter size={150} expression={celebrating ? "happy" : "normal"} decorative/><span className="fairy-name"><Sparkles size={13}/>リフちゃん</span></div>
     </section>
+    <section className="panel cockpit-status" aria-label="確認への入口"><button onClick={() => setTab("attention")}><BellRing size={17}/><span>要確認</span><b>{attentionCount}</b></button><button onClick={() => setTab("inbox")}><Inbox size={17}/><span>未整理</span><b>{inboxCount}</b></button>{systemCount > 0 && <button className="has-system-issue" onClick={() => setTab("attention")}><ShieldAlert size={17}/><span>System</span><b>{systemCount}</b></button>}</section>
     <section className="panel cockpit-next"><div className="section-title"><h2>NEXT</h2></div><b>{decision.nextAnchorAt ? time(decision.nextAnchorAt) + " " + nextTitle : nextTitle}</b><p>{decision.departureAt ? "推奨出発 " + time(decision.departureAt) : decision.usableUntil ? time(decision.usableUntil) + "まで安全" : "固定予定はありません"}</p><button className="diary-text-button" onClick={() => setTab("plan")}>カレンダーを見る<ArrowRight size={16}/></button></section>
     <section className="panel cockpit-today"><div className="section-title"><h2>TODAY</h2><button onClick={() => setTab("plan")}><CalendarDays size={17}/></button></div>{todayPlans.slice(0, 5).map(plan => <button className="today-cockpit-row" key={plan.id} onClick={() => setModal({ kind: "plan", entityId: plan.id })}><time>{time(plan.payload.startAt)}</time><b>{plan.payload.title}</b></button>)}{!todayPlans.length && <p className="diary-empty">今日の固定予定はありません。</p>}</section>
     {guidance !== "strong" && <section className="panel cockpit-helper"><div className="section-title"><h2><ListTodo size={17}/>今日の補助</h2></div>{dueTasks.map(task => <button className="diary-task-row" key={task.id} onClick={() => setModal({ kind: "task", entityId: task.id })}><b>{task.payload.title}</b><small>{currentTaskAction(entities, task.id)?.payload.title || "次の一手を整える"}</small></button>)}</section>}

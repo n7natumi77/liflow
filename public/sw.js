@@ -1,4 +1,4 @@
-const VERSION = "2026.09.25-3";
+const VERSION = "2026.09.25-4";
 const CACHE = `liflow-shell-${VERSION}`;
 const SHELL = [
   "/",
@@ -53,19 +53,22 @@ self.addEventListener("push", event => {
   try { payload = event.data?.json() || {}; } catch { payload = { notification: { body: event.data?.text() || "Liflowを開いて、今を確認しよう。" } }; }
   const notification = payload.notification || payload.data || {};
   const data = payload.data || notification.data || {};
+  const wakeAction = data.type === "dailyMorning" || data.type === "wake";
   event.waitUntil(self.registration.showNotification(notification.title || "Liflow", {
     body: notification.body || "今を確認しよう。",
     icon: "/icons/liflow-app-192.png",
     badge: "/icons/liflow-maskable-512.png",
     tag: data.dedupeKey || notification.tag || "liflow",
     renotify: false,
+    actions: wakeAction ? [{ action: "wake", title: "起きた" }] : [],
     data: { href: data.href || notification.click_action || "/?notification=push" },
   }));
 });
 
 self.addEventListener("notificationclick", event => {
   event.notification.close();
-  const target = new URL(event.notification.data?.href || "/?notification=push", self.location.origin).href;
+  const href = event.action === "wake" ? "/?notification=dailyMorning&action=recordWake" : event.notification.data?.href || "/?notification=push";
+  const target = new URL(href, self.location.origin).href;
   event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(clients => {
     const existing = clients.find(client => new URL(client.url).origin === self.location.origin);
     if (existing) return existing.navigate(target).then(() => existing.focus());

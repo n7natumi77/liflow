@@ -78,8 +78,8 @@ test("notification permission off creates no jobs; enabled settings cover all Ph
   const flow = make("flow", "routineFlow", { name: "朝", active: true, trigger: { type: "afterWake" }, steps: [{ id: "one", title: "支度", executionMode: "checkOnly", estimatedMinutes: 30 }] });
   const jobs = buildNotificationJobs("u", [enabled, sleep, anchor, travel, session, flow], now);
   const types = new Set(jobs.map(job => job.type));
-  for (const type of ["wake", "morning", "anchor", "departure", "execution", "windDown"]) assert.ok(types.has(type as never));
-  assert.ok(jobs.filter(job => job.type === "wake").length > 1);
+  for (const type of ["dailyMorning", "morning", "plan", "departure", "execution", "windDown", "dailyEvening"]) assert.ok(types.has(type as never));
+  assert.ok(jobs.filter(job => job.type === "dailyMorning").length > 1);
   assert.ok(jobs.filter(job => job.type === "windDown").length > 1);
 });
 

@@ -5,7 +5,7 @@ import {
   type EntityType,
 } from "./core.ts";
 
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 8;
 export type StoredEntity = Omit<CoreEntity, "schemaVersion"> & { schemaVersion?: number };
 export type EntityCounts = Record<EntityType, number>;
 
@@ -88,6 +88,8 @@ const legacyDefaults: Record<EntityType, Record<string, unknown>> = {
     defaultCalendarCategoryId: null,
   },
   conflict: { status: "open", choice: null, resolvedAt: null },
+  attention: { status: "open", ignoredAt: null, resolvedAt: null, metadata: {} },
+  notificationRule: { enabled: true, triggerType: "offset", offsetMinutes: 10, targetTime: null, repeatEnabled: false, repeatIntervalMinutes: null, maxRepeats: null },
 };
 
 /** Only schema-v4 additions belong here. Legacy fields remain untouched. */
@@ -151,6 +153,8 @@ const v4Defaults: Record<EntityType, Record<string, unknown>> = {
   project: {},
   settings: {},
   conflict: {},
+  attention: {},
+  notificationRule: {},
 };
 
 /** Only schema-v5 additions belong here. */
@@ -192,6 +196,8 @@ const v5Defaults: Record<EntityType, Record<string, unknown>> = {
     windDownMinutes: 45,
   },
   conflict: {},
+  attention: {},
+  notificationRule: {},
 };
 
 /** Only schema-v6 additions belong here. */
@@ -243,6 +249,8 @@ const v6Defaults: Record<EntityType, Record<string, unknown>> = {
     },
   },
   conflict: {},
+  attention: {},
+  notificationRule: {},
 };
 
 /** Only schema-v7 additions belong here. */
@@ -274,6 +282,32 @@ const v7Defaults: Record<EntityType, Record<string, unknown>> = {
   project: {},
   settings: { defaultCalendarCategoryId: null },
   conflict: {},
+  attention: {},
+  notificationRule: {},
+};
+
+/** Phase A adds shared Attention and NotificationRule without rewriting existing data. */
+const v8Defaults: Record<EntityType, Record<string, unknown>> = {
+  task: { attentionLeadDays: 7 },
+  taskAction: {}, plan: {}, actual: {}, inbox: {}, routine: {}, routineOccurrence: {},
+  recurringActivityRule: {}, routineFlow: {}, routineRun: {}, sleepRecord: { actualSleepAt: null, sleepSource: null, wakeSource: null }, conditionRecord: {},
+  executionSession: {}, transaction: {}, moneyCategory: {}, moneyMethod: {}, transfer: {}, budget: {},
+  checkin: {}, calendarCategory: {}, direction: {}, project: {},
+  settings: {
+    directionStaleDays: 3,
+    planNotificationOffsets: [10],
+    taskNotificationOffsets: [1440],
+    routineCheckTime: "20:00",
+    routineRepeatIntervalMinutes: 30,
+    routineMaxRepeats: 1,
+    morningSummaryEnabled: true,
+    morningSummaryTime: "08:00",
+    eveningSummaryEnabled: true,
+    eveningSummaryTime: "21:00",
+  },
+  conflict: {},
+  attention: { status: "open", ignoredAt: null, resolvedAt: null, metadata: {} },
+  notificationRule: { enabled: true, triggerType: "offset", offsetMinutes: 10, targetTime: null, repeatEnabled: false, repeatIntervalMinutes: null, maxRepeats: null },
 };
 
 export const FALLBACK_CALENDAR_CATEGORY_ID = "calendar_category_other";
@@ -392,6 +426,13 @@ export function migrateEntity(input: StoredEntity): CoreEntity {
       ...entity,
       payload: { ...v7Defaults[entity.type], ...entity.payload },
       schemaVersion: 7,
+    };
+  }
+  if (entity.schemaVersion === 7) {
+    entity = {
+      ...entity,
+      payload: { ...v8Defaults[entity.type], ...entity.payload },
+      schemaVersion: 8,
     };
   }
   if (entity.schemaVersion !== CURRENT_SCHEMA_VERSION) {

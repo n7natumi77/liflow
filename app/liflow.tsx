@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Home,
   CalendarRange,
@@ -12,6 +12,7 @@ import {
   WalletCards,
   Settings,
   Search,
+  BellRing,
 } from "lucide-react";
 import {
   active,
@@ -20,6 +21,7 @@ import {
   type ActualData,
   type ConflictData,
   type CoreEntity,
+  type AttentionData,
   type TaskData,
   type PlanData,
   type InboxData,
@@ -27,6 +29,7 @@ import {
   type SettingsData,
   type MoneyCategoryData,
   type MoneyMethodData,
+  type NotificationRuleData,
   type DirectionData,
   type ExecutionSessionData,
   type ExecutionOutcome,
@@ -44,6 +47,7 @@ import { DiaryDialog } from "./diary-dialog";
 import { dayRange, scheduledPlans } from "./diary-time";
 import type { Capture, CaptureState as Modal } from "./diary-types";
 import { MoneyView, RoutinesView } from "./life-sections";
+import { AttentionView } from "./attention-view";
 import { DirectionView } from "./direction-view";
 import {
   createEntity,
@@ -59,9 +63,11 @@ import {
   resolveConflict,
   restoreBackup,
   savePlannedWake,
+  saveSleepObservation,
   startExecutionSession,
   subscribeEntities,
   syncFutureBlocks,
+  syncAttentions,
   syncNotificationJobs,
   syncRecurringPlans,
   updateEntity,
@@ -84,6 +90,7 @@ const nav = [
   ["tasks", "タスク", ListTodo],
   ["money", "お金", WalletCards],
   ["inbox", "未整理", Inbox],
+  ["attention", "要確認", BellRing],
   ["recurring", "繰り返し予定", CalendarRange],
   ["directions", "方向", ArrowRight],
   ["settings", "設定", Settings],
@@ -117,12 +124,15 @@ function LiflowApp({
   const [syncState, setSyncState] = useState<SyncState>("接続中");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [foregroundNotice, setForegroundNotice] = useState("");
+  const [pushIssue, setPushIssue] = useState("");
   const [pwaUpdateReady, setPwaUpdateReady] = useState(false);
   const [modal, setModal] = useState<Modal>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [clock, setClock] = useState(new Date());
   const [notificationEntry] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("notification") || "");
+  const [notificationAction] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("action") || "");
   const automationSignature = useRef("");
+  const notificationActionHandled = useRef(false);
   const notificationsEnabled = active<SettingsData>(entities, "settings")[0]?.payload.notificationsEnabled;
   useEffect(() => {
     let stop = () => {},
@@ -170,7 +180,7 @@ function LiflowApp({
     return () => unsubscribe();
   }, []);
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !navigator.onLine) return;
     const signature = entities.map(item => `${item.id}:${item.revision}:${item.deletedAt || ""}`).sort().join("|");
     if (automationSignature.current === signature) return;
     automationSignature.current = signature;
@@ -186,8 +196,10 @@ function LiflowApp({
         next = merge(next, recurring);
         const future = await syncFutureBlocks(userId, next, new Date());
         next = merge(next, future.saved);
+        const attentionSaved = await syncAttentions(userId, next, new Date());
+        next = merge(next, attentionSaved);
         await syncNotificationJobs(userId, buildNotificationJobs(userId, next, new Date()));
-        if (!cancelled && (recurring.length || future.saved.length)) setEntities(next);
+        if (!cancelled && (recurring.length || future.saved.length || attentionSaved.length)) setEntities(next);
       } catch (reason) {
         console.error("phase2_automation_failed", reason);
       }
@@ -195,7 +207,7 @@ function LiflowApp({
     return () => { cancelled = true; };
   }, [entities, loaded, userId]);
   useEffect(() => {
-    if (notificationsEnabled) void refreshPushSubscription(userId).catch(() => undefined);
+    if (notificationsEnabled) void refreshPushSubscription(userId).then(() => setPushIssue("")).catch(() => setPushIssue("Push通知の端末登録を更新できませんでした。"));
   }, [notificationsEnabled, userId]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -418,12 +430,17 @@ function LiflowApp({
       ...(result.task ? [result.task] : []),
     ]);
   };
-  const recordWake = async () => {
+  const recordWake = useCallback(async (source: SleepRecordData["source"] = "manual") => {
     const now = new Date(), date = localDate(now);
     const sleep = active<SleepRecordData>(entities, "sleepRecord").find(item => item.payload.date === date);
-    const result = await recordWakeAndStartMorningFlow(userId, now, sleep, undefined, undefined);
+    const result = await recordWakeAndStartMorningFlow(userId, now, sleep, undefined, undefined, source);
     setEntities(value => [...value.filter(item => item.id !== result.sleep.id), result.sleep]);
-  };
+  }, [entities, userId]);
+  useEffect(() => {
+    if (!loaded || notificationAction !== "recordWake" || notificationActionHandled.current || !navigator.onLine) return;
+    notificationActionHandled.current = true;
+    void recordWake("notification-action").then(() => setForegroundNotice("起床時刻を記録しました。")).catch(() => { notificationActionHandled.current = false; setPushIssue("通知から起床時刻を記録できませんでした。"); });
+  }, [loaded, notificationAction, recordWake]);
   const tasks = active<TaskData>(entities, "task");
   const plans = active<PlanData>(entities, "plan");
   const inbox = active<InboxData>(entities, "inbox");
@@ -433,6 +450,9 @@ function LiflowApp({
   const conflicts = active<ConflictData>(entities, "conflict").filter(
     (item) => item.payload.status === "open",
   );
+  const openAttentions = active<AttentionData>(entities, "attention").filter(item => item.payload.status === "open");
+  const systemIssues = [syncState === "同期エラー" ? "Firebase同期に失敗しています。通信と権限を確認してください。" : "", pushIssue,
+    notificationsEnabled && notificationCapability() === "denied" ? "Push通知の権限がブラウザで無効になっています。" : ""].filter(Boolean);
   const todayPlans = plans
     .filter((p) => !p.payload.resolution && dayRange(p.payload.startAt, p.payload.endAt, clock))
     .sort((a, b) => a.payload.startAt.localeCompare(b.payload.startAt));
@@ -444,7 +464,7 @@ function LiflowApp({
   const nextPlan = scheduledPlans(todayPlans).find((p) => new Date(p.payload.startAt) > clock);
   return (
     <div className="shell" data-active-tab={tab}>
-      <DiaryNavigation tab={tab} setTab={setTab} checks={checks.length} userName={userName} syncState={syncState} onSignOut={onSignOut} />
+      <DiaryNavigation tab={tab} setTab={setTab} checks={checks.length} attentions={openAttentions.length} userName={userName} syncState={syncState} onSignOut={onSignOut} />
       {(foregroundNotice || pwaUpdateReady) && <div className="notification-entry" role="status">{foregroundNotice || "Liflowの更新を利用できます。設定の診断から適用してください。"}</div>}
       <main id="main-content" className="diary-main">
         <span className="diary-corner corner-left" aria-hidden="true" />
@@ -499,6 +519,8 @@ function LiflowApp({
                 endExecution={endExecution}
                 recordWake={recordWake}
                 notificationEntry={notificationEntry}
+                attentionCount={openAttentions.length}
+                systemCount={systemIssues.length}
               />
             )}
             {tab === "plan" && (
@@ -554,6 +576,7 @@ function LiflowApp({
                 setModal={setModal}
               />
             )}
+            {tab === "attention" && <AttentionView entities={entities} update={update} setTab={setTab} setModal={setModal} systemIssues={systemIssues}/>}
             {tab === "settings" && (
               <SettingsView
                  userId={userId}
@@ -762,6 +785,8 @@ export function SettingsView({
   ) => void;
 }) {
   const calendarCategories = active<CalendarCategoryData>(entities, "calendarCategory").filter(item => !item.payload.archived);
+  const todaySleep = active<SleepRecordData>(entities, "sleepRecord").find(item => item.payload.date === localDate());
+  const asLocalDateTime = (value?: string | null) => value ? `${localDate(new Date(value))}T${localTime(new Date(value))}` : "";
   const [start, setStart] = useState(settings?.payload.dayStart || "07:00"),
     [end, setEnd] = useState(settings?.payload.dayEnd || "23:00"),
     [guidanceIntensity, setGuidanceIntensity] = useState(settings?.payload.guidanceIntensity || "strong"),
@@ -778,6 +803,18 @@ export function SettingsView({
     [departureNotifications, setDepartureNotifications] = useState(settings?.payload.departureNotifications ?? true),
     [executionNotifications, setExecutionNotifications] = useState(settings?.payload.executionNotifications ?? true),
     [windDownNotifications, setWindDownNotifications] = useState(settings?.payload.windDownNotifications ?? true),
+    [directionStaleDays, setDirectionStaleDays] = useState(String(settings?.payload.directionStaleDays ?? 3)),
+    [planNotificationOffsets, setPlanNotificationOffsets] = useState((settings?.payload.planNotificationOffsets || [10]).join(",")),
+    [taskNotificationOffsets, setTaskNotificationOffsets] = useState((settings?.payload.taskNotificationOffsets || [1440]).join(",")),
+    [routineCheckTime, setRoutineCheckTime] = useState(settings?.payload.routineCheckTime || "20:00"),
+    [routineRepeatInterval, setRoutineRepeatInterval] = useState(String(settings?.payload.routineRepeatIntervalMinutes ?? 30)),
+    [routineMaxRepeats, setRoutineMaxRepeats] = useState(String(settings?.payload.routineMaxRepeats ?? 1)),
+    [morningSummaryEnabled, setMorningSummaryEnabled] = useState(settings?.payload.morningSummaryEnabled ?? true),
+    [morningSummaryTime, setMorningSummaryTime] = useState(settings?.payload.morningSummaryTime || "08:00"),
+    [eveningSummaryEnabled, setEveningSummaryEnabled] = useState(settings?.payload.eveningSummaryEnabled ?? true),
+    [eveningSummaryTime, setEveningSummaryTime] = useState(settings?.payload.eveningSummaryTime || "21:00"),
+    [actualWake, setActualWake] = useState(asLocalDateTime(todaySleep?.payload.actualWakeAt)),
+    [actualSleep, setActualSleep] = useState(asLocalDateTime(todaySleep?.payload.actualSleepAt)),
     [notificationMessage, setNotificationMessage] = useState(""),
     [nextWake, setNextWake] = useState(() => {
       const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); const date = localDate(tomorrow);
@@ -840,6 +877,16 @@ export function SettingsView({
       departureNotifications,
       executionNotifications,
       windDownNotifications,
+      directionStaleDays: Math.max(1, Number(directionStaleDays) || 3),
+      planNotificationOffsets: planNotificationOffsets.split(",").map(value => Number(value.trim())).filter(value => Number.isFinite(value) && value >= 0),
+      taskNotificationOffsets: taskNotificationOffsets.split(",").map(value => Number(value.trim())).filter(value => Number.isFinite(value) && value >= 0),
+      routineCheckTime,
+      routineRepeatIntervalMinutes: Math.max(1, Number(routineRepeatInterval) || 30),
+      routineMaxRepeats: Math.max(0, Number(routineMaxRepeats) || 0),
+      morningSummaryEnabled,
+      morningSummaryTime,
+      eveningSummaryEnabled,
+      eveningSummaryTime,
     };
     try {
       if (settings) await update(settings, payload);
@@ -848,6 +895,7 @@ export function SettingsView({
         const wake = new Date(nextWake), date = localDate(wake), planned = active<SleepRecordData>(entities, "sleepRecord").find(item => item.payload.date === date);
         await savePlannedWake(userId, date, wake.toISOString(), planned);
       }
+      if (actualWake || actualSleep || todaySleep) await saveSleepObservation(userId, localDate(), { actualWakeAt: actualWake ? new Date(actualWake).toISOString() : null, actualSleepAt: actualSleep ? new Date(actualSleep).toISOString() : null }, todaySleep);
       if (!notificationsOn) await disablePushNotifications(userId).catch(() => undefined);
       setMessage("保存しました。");
     } catch {
@@ -981,6 +1029,8 @@ export function SettingsView({
           <label>通常の起床候補<input aria-label="通常の起床候補" type="time" value={fallbackWake} onChange={event => setFallbackWake(event.target.value)} /></label>
           <label>起床確認の猶予（分）<input type="number" min="30" step="15" value={wakeWindow} onChange={event => setWakeWindow(event.target.value)} /></label>
           <label>次の起床予定<input aria-label="次の起床予定" type="datetime-local" value={nextWake} onChange={event => setNextWake(event.target.value)} /></label>
+          <label>今日の実際の起床<input type="datetime-local" value={actualWake} onChange={event => setActualWake(event.target.value)} /></label>
+          <label>今日の実際の就寝<input type="datetime-local" value={actualSleep} onChange={event => setActualSleep(event.target.value)} /></label>
           <label>予定の既定カレンダー<select value={defaultCategoryId} onChange={event => setDefaultCategoryId(event.target.value)}>{calendarCategories.map(category => <option key={category.id} value={category.id}>{category.payload.name}</option>)}</select></label>
         </div>
         {message && (
@@ -1009,6 +1059,18 @@ export function SettingsView({
           <label className="checkbox-label"><input type="checkbox" checked={departureNotifications} onChange={event => setDepartureNotifications(event.target.checked)}/>出発</label>
           <label className="checkbox-label"><input type="checkbox" checked={executionNotifications} onChange={event => setExecutionNotifications(event.target.checked)}/>実行の切り上げ</label>
           <label className="checkbox-label"><input type="checkbox" checked={windDownNotifications} onChange={event => setWindDownNotifications(event.target.checked)}/>Wind Down</label>
+        </div>
+        <div className="form-pair notification-defaults">
+          <label>Direction停滞（日）<input type="number" min="1" value={directionStaleDays} onChange={event => setDirectionStaleDays(event.target.value)}/></label>
+          <label>予定の既定通知（分前・カンマ区切り）<input value={planNotificationOffsets} onChange={event => setPlanNotificationOffsets(event.target.value)} placeholder="10"/></label>
+          <label>Taskの既定通知（分前・カンマ区切り）<input value={taskNotificationOffsets} onChange={event => setTaskNotificationOffsets(event.target.value)} placeholder="1440"/></label>
+          <label>時刻なしRoutine確認<input type="time" value={routineCheckTime} onChange={event => setRoutineCheckTime(event.target.value)}/></label>
+          <label>Routine再通知（分）<input type="number" min="1" value={routineRepeatInterval} onChange={event => setRoutineRepeatInterval(event.target.value)}/></label>
+          <label>Routine再通知回数<input type="number" min="0" value={routineMaxRepeats} onChange={event => setRoutineMaxRepeats(event.target.value)}/></label>
+          <label className="checkbox-label"><input type="checkbox" checked={morningSummaryEnabled} onChange={event => setMorningSummaryEnabled(event.target.checked)}/>朝の予定一覧</label>
+          <label>朝通知時刻<input type="time" value={morningSummaryTime} onChange={event => setMorningSummaryTime(event.target.value)}/></label>
+          <label className="checkbox-label"><input type="checkbox" checked={eveningSummaryEnabled} onChange={event => setEveningSummaryEnabled(event.target.checked)}/>夜のまとめ</label>
+          <label>夜通知時刻<input type="time" value={eveningSummaryTime} onChange={event => setEveningSummaryTime(event.target.value)}/></label>
         </div>
         {notificationMessage && <p className="settings-saved" role="status">{notificationMessage}</p>}
       </section>
@@ -1154,6 +1216,7 @@ export function CaptureModal({
   const editingPayload = (editing?.payload || {}) as Record<string, unknown>;
   const linkedPlan = plans.find((p) => p.id === modal.planId);
   const savedSettings = active<SettingsData>(entities, "settings")[0];
+  const savedNotificationRules = active<NotificationRuleData>(entities, "notificationRule").filter(rule => rule.payload.sourceId === editing?.id && (editing?.type === "plan" || editing?.type === "task") && rule.payload.sourceType === editing.type);
   const moneyCategories = active<MoneyCategoryData>(entities, "moneyCategory").filter(item => !item.payload.archived);
   const moneyMethods = active<MoneyMethodData>(entities, "moneyMethod").filter(item => !item.payload.archived);
   const plan = (editing?.type === "plan" ? editing : linkedPlan) as
@@ -1209,6 +1272,12 @@ export function CaptureModal({
     [remainingEstimate, setRemainingEstimate] = useState(
       typeof task?.payload.estimatedRemainingMinutes === "number" ? String(task.payload.estimatedRemainingMinutes) : "",
     ),
+    [taskAttentionLead, setTaskAttentionLead] = useState(task?.payload.attentionLeadDays === null ? "" : String(task?.payload.attentionLeadDays ?? 7)),
+    [notificationOffsets, setNotificationOffsets] = useState(() => {
+      if (savedNotificationRules.some(rule => rule.payload.triggerType === "disabled")) return "";
+      const explicit = savedNotificationRules.filter(rule => rule.payload.triggerType === "offset" && rule.payload.enabled).map(rule => rule.payload.offsetMinutes).filter((value): value is number => typeof value === "number");
+      return (explicit.length ? explicit : modal.kind === "task" ? savedSettings?.payload.taskNotificationOffsets || [1440] : savedSettings?.payload.planNotificationOffsets || [10]).join(",");
+    }),
     [moneyAmount, setMoneyAmount] = useState(""),
     [moneyDirection, setMoneyDirection] = useState<"expense" | "income">("expense"),
     [moneyCategoryId, setMoneyCategoryId] = useState(moneyCategories[0]?.id || ""),
@@ -1220,6 +1289,16 @@ export function CaptureModal({
     [formError, setFormError] = useState("");
   const effectiveCategory = categoryId || plan?.payload.calendarCategoryId || task?.payload.calendarCategoryId || null;
   const internalPlanType = (editingPayload.type as PlanData["type"]) || plan?.payload.type || (modal.taskId ? "task" : "appointment");
+  const saveNotificationRules = async (source: CoreEntity, sourceType: "plan" | "task") => {
+    const offsets = [...new Set(notificationOffsets.split(",").map(value => Number(value.trim())).filter(value => Number.isFinite(value) && value >= 0))];
+    const existingRules = active<NotificationRuleData>(entities, "notificationRule").filter(rule => rule.payload.sourceType === sourceType && rule.payload.sourceId === source.id);
+    const desired = offsets.length ? offsets.map(offsetMinutes => ({ sourceType, sourceId: source.id, enabled: true, triggerType: "offset" as const, offsetMinutes, targetTime: null, repeatEnabled: false, repeatIntervalMinutes: null, maxRepeats: null }))
+      : [{ sourceType, sourceId: source.id, enabled: false, triggerType: "disabled" as const, offsetMinutes: null, targetTime: null, repeatEnabled: false, repeatIntervalMinutes: null, maxRepeats: null }];
+    for (let index = 0; index < desired.length; index++) {
+      const current = existingRules[index]; if (current) await update(current, desired[index]); else await create("notificationRule", desired[index]);
+    }
+    for (const obsolete of existingRules.slice(desired.length)) await update(obsolete, obsolete.payload, true);
+  };
   const save = async () => {
     if (!title.trim() || busy) return;
     if (kind === "plan" && !effectiveCategory) { setFormError("予定のカレンダーを選んでください。"); return; }
@@ -1253,6 +1332,7 @@ export function CaptureModal({
           calendarCategoryId: effectiveCategory,
           status: task?.payload.status || "open",
           completedAt: task?.payload.completedAt || null,
+          attentionLeadDays: taskAttentionLead === "" ? null : Math.max(0, Number(taskAttentionLead) || 0),
         };
       if (kind === "plan")
         payload = {
@@ -1298,10 +1378,12 @@ export function CaptureModal({
         if (!moneyCategory || !Number.isFinite(Number(moneyAmount)) || Number(moneyAmount) <= 0) { setFormError("金額とカテゴリを入力してください。"); setBusy(false); return; }
         payload = { title: title.trim(), amount: Number(moneyAmount), direction: moneyDirection, category: moneyCategory.payload.name, categoryId: moneyCategory.id, moneyMethodId: moneyMethodId || null, transferId: null, occurredAt: new Date().toISOString(), expectedAt: null, status: "settled", projectId: null, actualId: null, planId: null, taskId: null, note: "" };
       }
+      let savedSource: CoreEntity | undefined = editing;
       if (editing) await update(editing, payload);
       else if (kind === "actual" && plan)
         await createLinkedActual(plan, payload as ActualData);
-      else await create(kind === "money" ? "transaction" : kind, payload);
+      else savedSource = await create(kind === "money" ? "transaction" : kind, payload);
+      if (savedSource && (kind === "plan" || kind === "task")) await saveNotificationRules(savedSource, kind);
       close();
     } catch {
       setFormError("保存できませんでした。入力内容を残しています。通信や最新の同期状態を確認してください。");
@@ -1385,9 +1467,11 @@ export function CaptureModal({
                 <label>カレンダー<select aria-label="タスクのカレンダー" value={categoryId} onChange={event => setCategoryId(event.target.value)}><option value="">なし</option>{categories.map(category => <option key={category.id} value={category.id}>{category.payload.name}</option>)}</select></label>
               </div>
               <label>方向<select aria-label="タスクの方向" value={directionId} onChange={event => setDirectionId(event.target.value)}><option value="">未指定</option>{directions.filter(item => item.payload.active || item.id === directionId).sort((a, b) => a.payload.sortOrder - b.payload.sortOrder).map(item => <option key={item.id} value={item.id}>{item.payload.name}</option>)}</select></label>
+              <label>期限Attention（日前・空欄でなし）<input type="number" min="0" value={taskAttentionLead} onChange={event => setTaskAttentionLead(event.target.value)} placeholder="7"/></label>
             </details>
           </>
         )}
+        {(kind === "plan" || kind === "task") && <details className="notification-rule-editor"><summary>通知</summary><label>通知する分前（複数はカンマ区切り）<input value={notificationOffsets} onChange={event => setNotificationOffsets(event.target.value)} placeholder={kind === "plan" ? "10,0" : "1440"}/></label><small>空欄で、この項目のPush通知を無効にします。例：60,10,0</small></details>}
         {kind === "money" && <div className="form-pair"><label>金額<input type="number" min="1" required value={moneyAmount} onChange={event => setMoneyAmount(event.target.value)}/></label><label>種類<select value={moneyDirection} onChange={event => setMoneyDirection(event.target.value as typeof moneyDirection)}><option value="expense">支出</option><option value="income">収入</option></select></label><label>カテゴリ<select required value={moneyCategoryId} onChange={event => setMoneyCategoryId(event.target.value)}>{moneyCategories.filter(item => item.payload.appliesTo === "both" || item.payload.appliesTo === moneyDirection).map(item => <option key={item.id} value={item.id}>{item.payload.name}</option>)}</select></label><label>支払方法<select value={moneyMethodId} onChange={event => setMoneyMethodId(event.target.value)}><option value="">未指定</option>{moneyMethods.map(item => <option key={item.id} value={item.id}>{item.payload.name}</option>)}</select></label></div>}
         {kind === "plan" && (
           <div className="form-pair">

@@ -57,7 +57,7 @@ async function sendFcm(env: SchedulerEnv, token: string, deviceToken: string, jo
     body: JSON.stringify({ message: {
       token: deviceToken,
       notification: { title: field(job, "title") || "Liflow", body: field(job, "body") || "今を確認しよう。" },
-      data: { href, dedupeKey: String(field(job, "dedupeKey") || "liflow") },
+      data: { href, dedupeKey: String(field(job, "dedupeKey") || "liflow"), type: String(field(job, "type") || "push") },
       webpush: env.APP_ORIGIN ? { fcmOptions: { link } } : undefined,
     } }),
   });

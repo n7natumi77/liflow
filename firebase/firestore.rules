@@ -62,7 +62,7 @@ service cloud.firestore {
         ])
         && data.uid is string
         && data.dedupeKey is string
-        && data.type in ['wake', 'morning', 'anchor', 'departure', 'execution', 'windDown']
+        && data.type in ['wake', 'morning', 'anchor', 'departure', 'execution', 'windDown', 'plan', 'task', 'routine', 'dailyMorning', 'dailyEvening']
         && data.dueAt is string
         && data.title is string
         && data.body is string

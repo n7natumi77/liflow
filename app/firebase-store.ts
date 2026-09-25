@@ -1,13 +1,14 @@
 'use client';
 import {collection,doc,getDoc,getDocs,onSnapshot,query,runTransaction,setDoc,where,writeBatch,type DocumentData} from 'firebase/firestore';
 import {firestore} from './firebase-client';
-import {inheritedDirection,shiftedPlan,validTimeRange,type ActualData,type ConflictData,type CoreEntity,type EntityType,type ExecutionOutcome,type ExecutionSessionData,type PlanData,type RoutineFlowData,type RoutineRunData,type SleepRecordData,type TaskData,type TransactionData} from '../domain/core';
+import {inheritedDirection,shiftedPlan,validTimeRange,type ActualData,type AttentionData,type ConflictData,type CoreEntity,type EntityType,type ExecutionOutcome,type ExecutionSessionData,type PlanData,type RoutineFlowData,type RoutineRunData,type SleepRecordData,type TaskData,type TransactionData} from '../domain/core';
 import {CURRENT_SCHEMA_VERSION,assertMigrationCandidate,countEntities,createSnapshotMigrationPlan,migrateEntity,migrateSnapshot,type StoredEntity} from '../domain/schema';
 import {deriveExecutionRuntimeState,executionActualId,startRoutineRunPayload} from '../domain/execution';
 import {planRecurringMutations,protectGeneratedPlanEdit} from '../domain/recurrence';
 import {planFutureBlocks} from '../domain/future-blocks';
 import {deviceSubscriptionPayload,disableDeviceSubscription,notificationJobId,type DeviceSubscriptionData,type NotificationJobData} from '../domain/notifications';
 import {prepareActualDeletion} from '../domain/actual-deletion';
+import {reconcileAttentions} from '../domain/attention';
 
 export type SyncState='接続中'|'同期済み'|'オフライン'|'同期エラー';
 export const localDeviceId=()=>{let id=localStorage.getItem('liflow_device_id_v1');if(!id){id=`device_${crypto.randomUUID()}`;localStorage.setItem('liflow_device_id_v1',id)}return id};
@@ -95,10 +96,10 @@ export async function completeExecutionSession(uid:string,session:CoreEntity<Exe
  });
 }
 
-export async function recordWakeAndStartMorningFlow(uid:string,now:Date,sleep:CoreEntity<SleepRecordData>|undefined,flow:CoreEntity<RoutineFlowData>|undefined,running:CoreEntity<RoutineRunData>|undefined){
+export async function recordWakeAndStartMorningFlow(uid:string,now:Date,sleep:CoreEntity<SleepRecordData>|undefined,flow:CoreEntity<RoutineFlowData>|undefined,running:CoreEntity<RoutineRunData>|undefined,source:SleepRecordData['source']='manual'){
  const entityCollection=collection(firestore,'users',uid,'entities'),pad=(value:number)=>String(value).padStart(2,'0'),date=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`,sleepRef=doc(entityCollection,sleep?.id||`sleep_${date}`),runRef=flow&&!running?doc(entityCollection,`routine_run_${date}_${flow.id}`):null,by=deviceId();
  return runTransaction(firestore,async transaction=>{const sleepSnapshot=await transaction.get(sleepRef),runSnapshot=runRef?await transaction.get(runRef):null,currentSleep=sleepSnapshot.exists()?migrateEntity(entityFromDoc(sleepSnapshot.id,sleepSnapshot.data())) as CoreEntity<SleepRecordData>:sleep;
-  const wakeAt=now.toISOString(),savedSleep:CoreEntity<SleepRecordData>=currentSleep?{...currentSleep,payload:{...currentSleep.payload,date,actualWakeAt:wakeAt,source:'manual'},revision:currentSleep.revision+1,updatedAt:wakeAt,updatedBy:by}:{id:sleepRef.id,type:'sleepRecord',payload:{date,plannedSleepAt:null,plannedWakeAt:null,estimatedSleepAt:null,actualWakeAt:wakeAt,source:'manual',confidence:1},schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:wakeAt,updatedAt:wakeAt,updatedBy:by,deletedAt:null};
+  const wakeAt=now.toISOString(),savedSleep:CoreEntity<SleepRecordData>=currentSleep?{...currentSleep,payload:{...currentSleep.payload,date,actualWakeAt:wakeAt,source,wakeSource:source},revision:currentSleep.revision+1,updatedAt:wakeAt,updatedBy:by}:{id:sleepRef.id,type:'sleepRecord',payload:{date,plannedSleepAt:null,plannedWakeAt:null,estimatedSleepAt:null,actualSleepAt:null,actualWakeAt:wakeAt,source,sleepSource:null,wakeSource:source,confidence:1},schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:wakeAt,updatedAt:wakeAt,updatedBy:by,deletedAt:null};
   let savedRun:CoreEntity<RoutineRunData>|null=running||null;if(runRef&&flow){savedRun=runSnapshot?.exists()?migrateEntity(entityFromDoc(runSnapshot.id,runSnapshot.data())) as CoreEntity<RoutineRunData>:{id:runRef.id,type:'routineRun',payload:startRoutineRunPayload(flow,now),schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:wakeAt,updatedAt:wakeAt,updatedBy:by,deletedAt:null};if(!runSnapshot?.exists())transaction.set(runRef,savedRun)}transaction.set(sleepRef,savedSleep);return {sleep:savedSleep,run:savedRun};
  });
 }
@@ -109,6 +110,11 @@ export async function savePlannedWake(uid:string,date:string,plannedWakeAt:strin
   const payload:SleepRecordData={date,plannedSleepAt:remote?.payload.plannedSleepAt||null,plannedWakeAt,estimatedSleepAt:remote?.payload.estimatedSleepAt||null,actualWakeAt:remote?.payload.actualWakeAt||null,source:'manual',confidence:1};
   const saved:CoreEntity<SleepRecordData>=remote?{...remote,payload,revision:remote.revision+1,updatedAt:now,updatedBy:by}:{id:ref.id,type:'sleepRecord',payload,schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:now,updatedAt:now,updatedBy:by,deletedAt:null};transaction.set(ref,saved);return saved;
  });
+}
+
+export async function saveSleepObservation(uid:string,date:string,input:{actualSleepAt?:string|null;actualWakeAt?:string|null},existing?:CoreEntity<SleepRecordData>){
+ const ref=doc(firestore,'users',uid,'entities',existing?.id||`sleep_${date}`),by=deviceId(),now=new Date().toISOString();
+ return runTransaction(firestore,async transaction=>{const snapshot=await transaction.get(ref),remote=snapshot.exists()?migrateEntity(entityFromDoc(snapshot.id,snapshot.data())) as CoreEntity<SleepRecordData>:existing,payload:SleepRecordData={date,plannedSleepAt:remote?.payload.plannedSleepAt||null,plannedWakeAt:remote?.payload.plannedWakeAt||null,estimatedSleepAt:remote?.payload.estimatedSleepAt||null,actualSleepAt:input.actualSleepAt??remote?.payload.actualSleepAt??null,actualWakeAt:input.actualWakeAt??remote?.payload.actualWakeAt??null,source:'manual',sleepSource:input.actualSleepAt?'manual':remote?.payload.sleepSource||null,wakeSource:input.actualWakeAt?'manual':remote?.payload.wakeSource||null,confidence:1},saved:CoreEntity<SleepRecordData>=remote?{...remote,payload,revision:remote.revision+1,updatedAt:now,updatedBy:by}:{id:ref.id,type:'sleepRecord',payload,schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:now,updatedAt:now,updatedBy:by,deletedAt:null};transaction.set(ref,saved);return saved});
 }
 
 export async function updateEntity(uid:string,entity:CoreEntity,payload:Record<string,unknown>,deleted=false){
@@ -192,6 +198,17 @@ export async function syncRecurringPlans(uid:string,entities:CoreEntity[],now=ne
 export async function syncFutureBlocks(uid:string,entities:CoreEntity[],now=new Date()){
  const plan=planFutureBlocks(entities,now,activeSettings(entities));
  return {plan,saved:await persistGeneratedPlans(uid,plan.mutations)};
+}
+
+export async function syncAttentions(uid:string,entities:CoreEntity[],now=new Date()){
+ const entityCollection=collection(firestore,'users',uid,'entities'),mutations=reconcileAttentions(entities,now),saved:CoreEntity<AttentionData>[]=[];
+ for(const mutation of mutations){const ref=doc(entityCollection,mutation.kind==='create'?mutation.id:mutation.entity.id);const result=await runTransaction(firestore,async transaction=>{const snapshot=await transaction.get(ref),remote=snapshot.exists()?migrateEntity(entityFromDoc(snapshot.id,snapshot.data())) as CoreEntity<AttentionData>:null,updatedAt=now.toISOString(),by=deviceId();
+   if(mutation.kind==='create'){if(remote)return remote;const created:CoreEntity<AttentionData>={id:mutation.id,type:'attention',payload:mutation.payload,schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:updatedAt,updatedAt,updatedBy:by,deletedAt:null};transaction.set(ref,created);return created}
+   if(!remote||remote.type!=='attention')return null;
+   if(remote.revision!==mutation.entity.revision)return remote;
+   const next:CoreEntity<AttentionData>={...remote,payload:mutation.payload,revision:remote.revision+1,updatedAt,updatedBy:by};transaction.set(ref,next);return next;
+  });if(result)saved.push(result)}
+ return saved;
 }
 
 const activeSettings=(entities:CoreEntity[])=>entities.find(item=>item.type==='settings'&&!item.deletedAt)?.payload||{};
