@@ -1,7 +1,7 @@
 'use client';
 import {getApp,getApps,initializeApp} from 'firebase/app';
 import {getAuth} from 'firebase/auth';
-import {enableMultiTabIndexedDbPersistence,getFirestore} from 'firebase/firestore';
+import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,type Firestore} from 'firebase/firestore';
 
 const firebaseConfig={
  apiKey:'AIzaSyD-rsAZ3ZpebNlpYoNKkpwWB7zbdsG4_Eo',
@@ -15,5 +15,8 @@ const firebaseConfig={
 
 export const firebaseApp=getApps().length?getApp():initializeApp(firebaseConfig);
 export const firebaseAuth=getAuth(firebaseApp);
-export const firestore=getFirestore(firebaseApp);
-if(typeof window!=='undefined')void enableMultiTabIndexedDbPersistence(firestore).catch(()=>undefined);
+const firestoreState=globalThis as typeof globalThis&{__liflowFirestore?:Firestore};
+export const firestore=firestoreState.__liflowFirestore||initializeFirestore(firebaseApp,{
+ localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()}),
+});
+firestoreState.__liflowFirestore=firestore;

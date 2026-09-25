@@ -57,3 +57,14 @@ test("Cloudflare deployment invokes checked-in CLIs without Windows command shim
   assert.match(deploy, /process\.execPath/);
   assert.doesNotMatch(deploy, /npx|\.cmd/);
 });
+
+test("offline startup enables persistent Firestore cache before non-cacheable preparation", () => {
+  const firebase = read("app/firebase-client.ts");
+  assert.match(firebase, /initializeFirestore/);
+  assert.match(firebase, /persistentLocalCache/);
+  assert.match(firebase, /persistentMultipleTabManager/);
+  assert.doesNotMatch(firebase, /enableMultiTabIndexedDbPersistence/);
+  const app = read("app/liflow.tsx");
+  assert.ok(app.indexOf("stop = subscribeEntities(") < app.indexOf("prepareUserData(userId)"));
+  assert.match(app, /if \(navigator\.onLine\) void prepareUserData/);
+});

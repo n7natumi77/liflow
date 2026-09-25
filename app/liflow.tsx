@@ -127,33 +127,33 @@ function LiflowApp({
   useEffect(() => {
     let stop = () => {},
       cancelled = false;
-    void prepareUserData(userId)
-      .then(() => {
-        if (!cancelled)
-          stop = subscribeEntities(
-            userId,
-            (next) => {
-              setEntities(next);
-              setLoaded(true);
-              setLastSyncedAt(new Date().toISOString());
-            },
-            setSyncState,
-            (message) => {
-              setError(message);
-              setLoaded(true);
-            },
-          );
-      })
-      .catch((reason) => {
-        console.error(reason);
-        if (!cancelled) {
+    stop = subscribeEntities(
+      userId,
+      (next) => {
+        setEntities(next);
+        setLoaded(true);
+        setLastSyncedAt(new Date().toISOString());
+        setError("");
+      },
+      setSyncState,
+      (message) => {
+        setError(message);
+        setLoaded(true);
+      },
+    );
+    if (navigator.onLine) void prepareUserData(userId).catch((reason) => {
+      console.error(reason);
+      if (!cancelled) {
+        if (navigator.onLine) {
           setSyncState("同期エラー");
           setError(
-            "データ更新前のバックアップまたは移行に失敗したため、自動更新を停止しました。Firestoreのルールと通信を確認してください。",
+            "データ更新前のバックアップまたは移行に失敗しました。Firestoreのルールと通信を確認してください。",
           );
-          setLoaded(true);
+        } else {
+          setSyncState("オフライン");
         }
-      });
+      }
+    });
     const t = setInterval(() => setClock(new Date()), 30000);
     return () => {
       cancelled = true;
