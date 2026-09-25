@@ -16,11 +16,12 @@
 - Firestore Rulesをrepository管理し、user isolation・入力shape・tombstone契約を強化
 - Firestore Emulator RulesテストとGitHub Actions（Node 22 / Java 21）を追加
 - オフライン起動時はFirestore永続キャッシュを先に購読し、オンライン専用migration transactionで画面を空にしないよう修正
+- オフラインでの新規Entity作成はローカルキュー投入後に画面を戻し、サーバー応答待ちで「保存中」のまま停止しないよう修正
 
 ## 自動検証結果
 
 - typecheck: 成功
-- 全test: 121件成功 / 失敗0
+- 全test: 122件成功 / 失敗0
 - lint: 成功
 - browser UI smoke: 13 checks / page error 0
 - Cloudflare production build: 成功（既知の500 KiB chunk warningのみ）
@@ -30,11 +31,12 @@
 - Phase 2.5実装commit後のclean clone: `npm ci` / typecheck / 118 tests / lint / build すべて成功（ignored local fileなし）
 - Firestore Rules emulator: 8 tests成功 / 失敗0（cross-user・guest・hard delete等の拒否を含む）
 - Firebase Rules deploy: `test-b1f84` へ成功（source commit `319cdd2`、ruleset `d474db41-5653-4f3f-bbff-67be9b7f4250`）
-- Cloudflare Production deploy: `https://liflow.errormeg.workers.dev`（source commit `b741515`、Version ID `e76289e1-4553-4a99-aa9c-d064ebe49226`）
+- Cloudflare Production deploy: `https://liflow.errormeg.workers.dev`（source commit `5cacc27`、Version ID `a1f81bb0-12c0-4e4d-a026-d97fba5136af`）
 - Production HTTP smoke: root / manifest / SW / 3 PNG icons / health = 200、Discord unsigned POST = 401
 - Production Firebase smoke: Auth origin受理 = 200、Firestore未認証read = 403 `PERMISSION_DENIED`
 - Production実機確認: PC・スマホ双方でFirebaseログイン、既存データ表示、端末間同期を確認（ユーザー報告）
-- Production offline初回確認: 機内モード再起動で空画面を確認し、修正版とService Worker `2026.09.25-2`をdeploy済み。実機再確認待ち
+- Production offline再起動: 修正版でキャッシュ済みデータを表示できることを実機確認済み
+- Production offline新規作成: 「保存中」で停止する問題を修正し、Service Worker `2026.09.25-3`をdeploy済み。再接続後の重複なし同期を実機再確認待ち
 
 ## 外部環境が必要な未完了項目
 
