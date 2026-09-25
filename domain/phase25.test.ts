@@ -68,3 +68,12 @@ test("offline startup enables persistent Firestore cache before non-cacheable pr
   assert.ok(app.indexOf("stop = subscribeEntities(") < app.indexOf("prepareUserData(userId)"));
   assert.match(app, /if \(navigator\.onLine\) void prepareUserData/);
 });
+
+test("offline entity creation queues writes without waiting for server acknowledgement", () => {
+  const store = read("app/firebase-store.ts");
+  assert.match(store, /!navigator\.onLine/);
+  assert.match(store, /void write\.catch/);
+  assert.match(store, /waitForWriteUnlessOffline\(setDoc/);
+  assert.match(store, /waitForWriteUnlessOffline\(batch\.commit\(\)/);
+  assert.match(store, /runTransaction/);
+});

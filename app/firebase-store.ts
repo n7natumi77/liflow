@@ -12,6 +12,10 @@ import {prepareActualDeletion} from '../domain/actual-deletion';
 export type SyncState='接続中'|'同期済み'|'オフライン'|'同期エラー';
 export const localDeviceId=()=>{let id=localStorage.getItem('liflow_device_id_v1');if(!id){id=`device_${crypto.randomUUID()}`;localStorage.setItem('liflow_device_id_v1',id)}return id};
 const deviceId=localDeviceId;
+const waitForWriteUnlessOffline=async(write:Promise<void>,operation:string)=>{
+ if(typeof navigator!=='undefined'&&!navigator.onLine){void write.catch(error=>console.error(`${operation}_deferred_sync_failed`,error));return}
+ await write;
+};
 const entityFromDoc=(id:string,data:DocumentData):StoredEntity=>({id,type:data.type as EntityType,payload:data.payload||{},schemaVersion:Number(data.schemaVersion||1),revision:Number(data.revision||1),createdAt:String(data.createdAt||''),updatedAt:String(data.updatedAt||''),updatedBy:String(data.updatedBy||''),deletedAt:data.deletedAt?String(data.deletedAt):null});
 export type BackupSummary={id:string;timestamp:string;dataCount:number;status:string;schemaVersion:number;reason?:string};
 
@@ -46,13 +50,13 @@ export function subscribeEntities(uid:string,onData:(entities:CoreEntity[])=>voi
 export async function createEntity(uid:string,type:EntityType,payload:Record<string,unknown>){
  const now=new Date().toISOString(),id=crypto.randomUUID();
  const entity:CoreEntity={id,type,payload,schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:now,updatedAt:now,updatedBy:deviceId(),deletedAt:null};
- await setDoc(doc(firestore,'users',uid,'entities',id),entity);
+ await waitForWriteUnlessOffline(setDoc(doc(firestore,'users',uid,'entities',id),entity),'create_entity');
  return entity;
 }
 
 export async function createEntities(uid:string,inputs:{type:EntityType;payload:Record<string,unknown>}[]){
  if(!inputs.length)throw new Error('batch_empty');const now=new Date().toISOString(),by=deviceId(),items:CoreEntity[]=inputs.map(input=>({id:crypto.randomUUID(),type:input.type,payload:input.payload,schemaVersion:CURRENT_SCHEMA_VERSION,revision:1,createdAt:now,updatedAt:now,updatedBy:by,deletedAt:null}));
- for(let offset=0;offset<items.length;offset+=400){const batch=writeBatch(firestore);for(const entity of items.slice(offset,offset+400))batch.set(doc(firestore,'users',uid,'entities',entity.id),entity);await batch.commit()}return items;
+ for(let offset=0;offset<items.length;offset+=400){const batch=writeBatch(firestore);for(const entity of items.slice(offset,offset+400))batch.set(doc(firestore,'users',uid,'entities',entity.id),entity);await waitForWriteUnlessOffline(batch.commit(),'create_entities')}return items;
 }
 
 export async function startExecutionSession(uid:string,payload:ExecutionSessionData){

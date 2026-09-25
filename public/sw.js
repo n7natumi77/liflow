@@ -1,4 +1,4 @@
-const VERSION = "2026.09.25-2";
+const VERSION = "2026.09.25-3";
 const CACHE = `liflow-shell-${VERSION}`;
 const SHELL = [
   "/",
