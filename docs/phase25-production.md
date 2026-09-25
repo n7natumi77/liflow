@@ -1,5 +1,7 @@
 # Liflow Phase 2.5 production runbook
 
+Current production origin: `https://liflow.errormeg.workers.dev`
+
 ## 1. Clean clone
 
 Required locally: Git, Node.js 22.13 or newer, npm. Firestore Rules tests additionally require Java 21.
@@ -41,6 +43,7 @@ npx wrangler secret put APP_ORIGIN --config wrangler.notifications.jsonc
 ```
 
 `APP_ORIGIN` is the exact HTTPS production origin without a trailing slash.
+For the current deployment, use `https://liflow.errormeg.workers.dev` when the scheduler is configured.
 
 ## 3. Variables and secrets
 
