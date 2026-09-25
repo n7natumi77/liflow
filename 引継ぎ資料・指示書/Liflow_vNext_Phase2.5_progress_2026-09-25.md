@@ -28,12 +28,12 @@
 - Cloudflare認証確認: 未ログインのため実deployは未実施
 - Phase 2.5実装commit後のclean clone: `npm ci` / typecheck / 118 tests / lint / build すべて成功（ignored local fileなし）
 - Firestore Rules emulator: 8 tests成功 / 失敗0（cross-user・guest・hard delete等の拒否を含む）
-- Firebase CLI認証: 未ログインのためRulesの実deployは未実施
+- Firebase Rules deploy: `test-b1f84` へ成功（source commit `319cdd2`、ruleset `d474db41-5653-4f3f-bbff-67be9b7f4250`）
 
 ## 外部環境が必要な未完了項目
 
 - Cloudflare accountでのProduction deployと実URL smoke
-- Firebase実credentialでの2端末同期、migration、競合、本番Rules deploy後のcross-user拒否確認
+- Firebase実credentialでの2端末同期、migration、競合、本番環境でのcross-user拒否確認
 - 実スマートフォンへのPWA install、全主要画面、Execution Session、offline/reconnect
 - FCM foreground/background/closed delivery、click、sign-out/user切替
 - Discord Developer Portal接続、実Server query/mutation/bulk/long output/security
