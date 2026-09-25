@@ -29,7 +29,7 @@
 - Phase 2.5実装commit後のclean clone: `npm ci` / typecheck / 118 tests / lint / build すべて成功（ignored local fileなし）
 - Firestore Rules emulator: 8 tests成功 / 失敗0（cross-user・guest・hard delete等の拒否を含む）
 - Firebase Rules deploy: `test-b1f84` へ成功（source commit `319cdd2`、ruleset `d474db41-5653-4f3f-bbff-67be9b7f4250`）
-- Cloudflare Production deploy: `https://liflow.errormeg.workers.dev`（Version ID `545f5568-ddc9-403e-a5b8-eb8f910f81e1`）
+- Cloudflare Production deploy: `https://liflow.errormeg.workers.dev`（source commit `a032528`、Version ID `05ac5157-f6ab-4970-9a5f-8985abbe812f`）
 - Production HTTP smoke: root / manifest / SW / 3 PNG icons / health = 200、Discord unsigned POST = 401
 - Production Firebase smoke: Auth origin受理 = 200、Firestore未認証read = 403 `PERMISSION_DENIED`
 
