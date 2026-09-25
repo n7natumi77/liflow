@@ -1,39 +1,125 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function validEntity(entityId, data) {
+      return data.keys().hasAll([
+          'id', 'type', 'payload', 'schemaVersion', 'revision',
+          'createdAt', 'updatedAt', 'updatedBy', 'deletedAt'
+        ])
+        && data.id == entityId
+        && data.type is string
+        && data.payload is map
+        && data.schemaVersion is int
+        && data.schemaVersion >= 1
+        && data.revision is int
+        && data.revision >= 1
+        && data.createdAt is string
+        && data.updatedAt is string
+        && data.updatedBy is string
+        && (data.deletedAt == null || data.deletedAt is string);
+    }
+
+    function validEntityUpdate(entityId) {
+      return validEntity(entityId, request.resource.data)
+        // Legacy documents can be missing metadata that schema migration adds.
+        && (!resource.data.keys().hasAll(['id'])
+          || request.resource.data.id == resource.data.id)
+        && (!resource.data.keys().hasAll(['type'])
+          || request.resource.data.type == resource.data.type)
+        && (!resource.data.keys().hasAll(['createdAt'])
+          || request.resource.data.createdAt == resource.data.createdAt);
+    }
+
+    function validRuntime(data) {
+      return data.keys().hasAll(['status', 'sessionId', 'updatedAt'])
+        && data.status in ['running', 'completed']
+        && (data.sessionId == null || data.sessionId is string)
+        && data.updatedAt is string;
+    }
+
+    function validDevice(deviceId, data) {
+      return data.keys().hasAll([
+          'deviceId', 'token', 'platform', 'createdAt',
+          'updatedAt', 'lastSeenAt', 'enabled'
+        ])
+        && data.deviceId == deviceId
+        && data.token is string
+        && data.platform is string
+        && data.createdAt is string
+        && data.updatedAt is string
+        && data.lastSeenAt is string
+        && data.enabled is bool;
+    }
+
+    function validNotificationJob(data) {
+      return data.keys().hasAll([
+          'uid', 'dedupeKey', 'type', 'dueAt', 'title', 'body',
+          'href', 'enabled', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string
+        && data.dedupeKey is string
+        && data.type in ['wake', 'morning', 'anchor', 'departure', 'execution', 'windDown']
+        && data.dueAt is string
+        && data.title is string
+        && data.body is string
+        && data.href is string
+        && data.enabled is bool
+        && data.createdAt is string
+        && data.updatedAt is string;
+    }
+
     match /users/{userId}/entities/{entityId} {
-      allow read, create, update: if request.auth != null
-        && request.auth.uid == userId;
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && validEntity(entityId, request.resource.data);
+      allow update: if isOwner(userId)
+        && validEntityUpdate(entityId);
       allow delete: if false;
     }
+
     match /users/{userId}/backups/{backupId} {
-      allow read, create, update: if request.auth != null
-        && request.auth.uid == userId;
+      allow read, create, update: if isOwner(userId);
       allow delete: if false;
+
       match /entities/{entityId} {
-        allow read, create: if request.auth != null
-          && request.auth.uid == userId;
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && validEntity(entityId, request.resource.data);
         allow update, delete: if false;
       }
     }
+
     match /users/{userId}/runtime/{runtimeId} {
-      allow read, create, update: if request.auth != null
-        && request.auth.uid == userId;
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && validRuntime(request.resource.data);
       allow delete: if false;
     }
+
     match /users/{userId}/devices/{deviceId} {
-      allow read, create, update: if request.auth != null
-        && request.auth.uid == userId;
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && validDevice(deviceId, request.resource.data);
       allow delete: if false;
     }
+
     match /notificationJobs/{jobId} {
       allow read: if request.auth != null
         && resource.data.uid == request.auth.uid;
       allow create: if request.auth != null
-        && request.resource.data.uid == request.auth.uid;
+        && request.resource.data.uid == request.auth.uid
+        && validNotificationJob(request.resource.data);
       allow update: if request.auth != null
         && resource.data.uid == request.auth.uid
-        && request.resource.data.uid == resource.data.uid;
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.dedupeKey == resource.data.dedupeKey
+        && request.resource.data.type == resource.data.type
+        && request.resource.data.createdAt == resource.data.createdAt
+        && validNotificationJob(request.resource.data);
       allow delete: if false;
     }
   }

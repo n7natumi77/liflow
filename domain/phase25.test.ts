@@ -40,3 +40,13 @@ test("health diagnostics expose configuration booleans and never secret values",
   assert.match(route, /Boolean\(process\.env/);
   assert.doesNotMatch(route, /FIREBASE_SERVICE_ACCOUNT_JSON\s*:/);
 });
+
+test("Firestore rules are repository-managed and tested in CI", () => {
+  const firebase = JSON.parse(read("firebase.json"));
+  assert.equal(firebase.firestore.rules, "firebase/firestore.rules");
+  const rules = read("firebase/firestore.rules");
+  assert.match(rules, /request\.auth\.uid == userId/);
+  assert.match(rules, /allow delete: if false/);
+  const workflow = read(".github/workflows/firestore-rules.yml");
+  assert.match(workflow, /npm run test:rules/);
+});

@@ -2,7 +2,7 @@
 
 ## 1. Clean clone
 
-Required locally: Git, Node.js 22.13 or newer, npm.
+Required locally: Git, Node.js 22.13 or newer, npm. Firestore Rules tests additionally require Java 21.
 
 ```powershell
 git clone <repository-url> liflow
@@ -10,6 +10,7 @@ cd liflow
 npm ci
 npm run typecheck
 npm test
+npm run test:rules
 npm run lint
 npm run build
 npm run deploy:dry-run
@@ -61,11 +62,22 @@ Use Cloudflare Dashboard > Worker > Settings > Variables and Secrets, or `npx wr
 ## 4. Firebase
 
 1. Firebase Authentication: enable the intended provider and add the Cloudflare hostname under Authorized domains.
-2. Firestore: deploy `firebase/firestore.rules` and verify a signed-in user can access only `users/{uid}` plus their own notification jobs.
-3. Cloud Messaging: create a Web Push certificate and set its public key as `NEXT_PUBLIC_FIREBASE_VAPID_KEY` during the production build.
-4. Create a least-privilege service account used only by the Discord route and scheduler; store its one-line JSON as a Cloudflare secret.
-5. In two signed-in browsers, create/edit the same Task, Plan, Actual, Execution Session, and Money record. Confirm live sync, schema v7, conflict UI, and no silent overwrite.
-6. Seed a pre-v7 test user only, sign in, and confirm migration backup is `ready`/`migrated` before checking migrated entities. Never use production data for destructive migration experiments.
+2. Before a Rules change, run `npm run test:rules`. The emulator suite checks unauthenticated and cross-user denial, owner access, tombstone-only deletion, immutable entity identity, append-only backup entities, runtime/device validation, notification ownership, and deny-by-default paths.
+3. Confirm Firebase CLI authentication and the target project, then deploy only the repository-managed Rules:
+
+   ```powershell
+   npx firebase-tools login:list
+   npx firebase-tools use test-b1f84
+   npm run firebase:deploy:rules
+   ```
+
+   A CLI deployment replaces the active Console Rules. Review `git diff -- firebase/firestore.rules`, keep the deployed commit SHA, and do not edit Console and repository Rules independently.
+4. After deployment, use two disposable Firebase Authentication users. User A must be able to read/write only `users/{A uid}/...` and their own `notificationJobs`; User B and an unauthenticated client must be denied. Confirm an Actual GUI deletion writes a tombstone and does not issue a Firestore hard delete.
+5. Rollback by checking out the last known-good deployed commit in a separate clean worktree/clone, running `npm ci && npm run test:rules`, and redeploying only its Rules with `npm run firebase:deploy:rules`. Record both the failed and restored commit SHAs. Do not roll back application data when rolling back Rules.
+6. Cloud Messaging: create a Web Push certificate and set its public key as `NEXT_PUBLIC_FIREBASE_VAPID_KEY` during the production build.
+7. Create a least-privilege service account used only by the Discord route and scheduler; store its one-line JSON as a Cloudflare secret.
+8. In two signed-in browsers, create/edit the same Task, Plan, Actual, Execution Session, and Money record. Confirm live sync, schema v7, conflict UI, and no silent overwrite.
+9. Seed a pre-v7 test user only, sign in, and confirm migration backup is `ready`/`migrated` before checking migrated entities. Never use production data for destructive migration experiments.
 
 ## 5. Discord Developer Portal
 

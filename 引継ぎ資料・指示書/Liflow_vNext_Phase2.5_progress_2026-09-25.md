@@ -13,23 +13,27 @@
 - 過去の未実施Planを複製せずTask/Nowへ導出表示。Actual、完了、skip、unneeded、postpone等で停止
 - Phase 2.5 portability/PWA/Cloudflare/carryover automated tests
 - Production runbookと外部手順の分離
+- Firestore Rulesをrepository管理し、user isolation・入力shape・tombstone契約を強化
+- Firestore Emulator RulesテストとGitHub Actions（Node 22 / Java 21）を追加
 
 ## 自動検証結果
 
 - typecheck: 成功
-- 全test: 118件成功 / 失敗0
+- 全test: 119件成功 / 失敗0
 - lint: 成功
 - browser UI smoke: 13 checks / page error 0
 - Cloudflare production build: 成功（既知の500 KiB chunk warningのみ）
 - Wrangler deploy dry-run: 成功、D1/R2 bindingなし、gzip約390 KiB
 - local HTTP smoke: root / manifest / SW / 3 PNG icons / health = 200、Discord unsigned POST = 401
 - Cloudflare認証確認: 未ログインのため実deployは未実施
-- commit後のclean clone: `npm ci` / typecheck / 118 tests / lint / build すべて成功（ignored local fileなし）
+- Phase 2.5実装commit後のclean clone: `npm ci` / typecheck / 118 tests / lint / build すべて成功（ignored local fileなし）
+- Firestore Rules emulator: 8 tests成功 / 失敗0（cross-user・guest・hard delete等の拒否を含む）
+- Firebase CLI認証: 未ログインのためRulesの実deployは未実施
 
 ## 外部環境が必要な未完了項目
 
 - Cloudflare accountでのProduction deployと実URL smoke
-- Firebase実credentialでの2端末同期、migration、競合、Security Rules拒否確認
+- Firebase実credentialでの2端末同期、migration、競合、本番Rules deploy後のcross-user拒否確認
 - 実スマートフォンへのPWA install、全主要画面、Execution Session、offline/reconnect
 - FCM foreground/background/closed delivery、click、sign-out/user切替
 - Discord Developer Portal接続、実Server query/mutation/bulk/long output/security
